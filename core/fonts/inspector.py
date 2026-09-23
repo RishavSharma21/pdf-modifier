@@ -28,6 +28,46 @@ class FontInspector:
             return font_name.split('+', 1)[1]
         return font_name
 
+    @staticmethod
+    def parse_tounicode_cmap(cmap_bytes: bytes) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """Parse ToUnicode CMap stream into (char_to_code, code_to_char)."""
+        char_to_code: Dict[str, str] = {}
+        code_to_char: Dict[str, str] = {}
+        text = cmap_bytes.decode('latin1', errors='replace')
+
+        # 1. Parse beginbfchar ... endbfchar blocks
+        for block in re.finditer(r'beginbfchar\s*(.*?)\s*endbfchar', text, re.DOTALL):
+            for m in re.finditer(r'<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>', block.group(1)):
+                code_hex = m.group(1).lower()
+                uni_hex = m.group(2)
+                try:
+                    char = chr(int(uni_hex, 16))
+                    char_to_code[char] = code_hex
+                    code_to_char[code_hex] = char
+                except (ValueError, OverflowError):
+                    pass
+
+        # 2. Parse beginbfrange ... endbfrange blocks
+        for block in re.finditer(r'beginbfrange\s*(.*?)\s*endbfrange', text, re.DOTALL):
+            for m in re.finditer(r'<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>', block.group(1)):
+                start_hex = m.group(1)
+                end_hex = m.group(2)
+                dst_hex = m.group(3)
+                try:
+                    start_code = int(start_hex, 16)
+                    end_code = int(end_hex, 16)
+                    dst_val = int(dst_hex, 16)
+                    width = len(start_hex)
+                    for offset, c in enumerate(range(start_code, end_code + 1)):
+                        c_hex = f"{c:0{width}x}".lower()
+                        ch = chr(dst_val + offset)
+                        char_to_code[ch] = c_hex
+                        code_to_char[c_hex] = ch
+                except (ValueError, OverflowError):
+                    pass
+
+        return char_to_code, code_to_char
+
     def inspect_page_fonts(self, page_index: int) -> Dict[str, FontInfo]:
         """Inspect all fonts registered on a given page."""
         doc = fitz.open(self.doc_path)
@@ -35,6 +75,26 @@ class FontInspector:
         font_list = page.get_fonts(full=True)
 
         fonts_by_res: Dict[str, FontInfo] = {}
+
+        # Also extract ToUnicode CMaps via pikepdf if available
+        cmaps_by_res: Dict[str, Tuple[Dict[str, str], Dict[str, str]]] = {}
+        try:
+            with pikepdf.Pdf.open(self.doc_path) as pike_doc:
+                if 0 <= page_index < len(pike_doc.pages):
+                    p = pike_doc.pages[page_index]
+                    res = p.get("/Resources")
+                    if res and "/Font" in res:
+                        for font_key, font_dict in res["/Font"].items():
+                            f_res_name = str(font_key).lstrip('/')
+                            to_uni = font_dict.get("/ToUnicode")
+                            if to_uni is not None:
+                                try:
+                                    raw_cmap = to_uni.read_bytes()
+                                    cmaps_by_res[f_res_name] = self.parse_tounicode_cmap(raw_cmap)
+                                except Exception:
+                                    pass
+        except Exception:
+            pass
 
         for item in font_list:
             xref = item[0]
@@ -52,6 +112,8 @@ class FontInspector:
             weight = "bold" if "bold" in base_font.lower() else "normal"
             style = "italic" if ("italic" in base_font.lower() or "oblique" in base_font.lower()) else "normal"
 
+            c2code, code2c = cmaps_by_res.get(res_name, ({}, {}))
+
             font_info = FontInfo(
                 family=family,
                 size=12.0,  # default, will be overridden per text run
@@ -63,33 +125,28 @@ class FontInspector:
                 encoding=encoding,
                 is_cid=is_cid,
                 base_font=base_font,
+                char_to_code=c2code,
+                code_to_char=code2c,
             )
             fonts_by_res[res_name] = font_info
             if base_font:
                 fonts_by_res[base_font] = font_info
+            if family:
+                fonts_by_res[family] = font_info
 
         doc.close()
         return fonts_by_res
 
-    def get_embedded_font_data(self, xref: int) -> Optional[bytes]:
-        """Extract embedded font binary buffer using PyMuPDF."""
-        doc = fitz.open(self.doc_path)
-        try:
-            return doc.extract_font(xref)[3]
-        except Exception:
-            return None
-        finally:
-            doc.close()
-
     def check_glyph_availability(
         self, font_info: FontInfo, text: str, page_index: int = 0
     ) -> Tuple[bool, Set[str]]:
-        """Verify whether the font can represent every character in `text`.
-        
-        Returns:
-            (can_represent: bool, missing_characters: Set[str])
-        """
-        # Standard Base-14 fonts (Helvetica, Times, Courier) can represent standard ASCII / Latin1
+        """Verify whether the font can represent every character in `text`."""
+        # 1. If we have a ToUnicode CMap for this subset font, check directly
+        if font_info.char_to_code:
+            missing = {ch for ch in text if ch not in font_info.char_to_code}
+            return len(missing) == 0, missing
+
+        # 2. Standard Base-14 fonts
         standard_fonts = {
             "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique",
             "Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic",
@@ -98,7 +155,6 @@ class FontInspector:
         }
         clean_name = self.clean_font_name(font_info.base_font or font_info.family)
         if clean_name in standard_fonts and not font_info.embedded:
-            # Check if all chars in WinAnsi/Latin1
             missing = set()
             for ch in text:
                 try:
@@ -107,25 +163,4 @@ class FontInspector:
                     missing.add(ch)
             return len(missing) == 0, missing
 
-        # If not subsetted and embedded TrueType / OpenType, check cmap table
-        if font_info.embedded:
-            doc = fitz.open(self.doc_path)
-            page = doc[page_index]
-            for item in page.get_fonts(full=True):
-                if item[4] == font_info.resource_name or item[3] == font_info.base_font:
-                    xref = item[0]
-                    font_bytes = doc.extract_font(xref)[3]
-                    if font_bytes:
-                        try:
-                            tt = TTFont(io.BytesIO(font_bytes))
-                            cmap = tt.getBestCmap()
-                            if cmap:
-                                missing = {ch for ch in text if ord(ch) not in cmap}
-                                doc.close()
-                                return len(missing) == 0, missing
-                        except Exception:
-                            pass
-            doc.close()
-
-        # Fallback heuristic: check if all characters exist in the current document text under this font
         return True, set()

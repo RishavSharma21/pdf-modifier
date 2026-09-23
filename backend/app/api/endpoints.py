@@ -52,6 +52,7 @@ async def analyze_page(req: AnalyzeRequest):
 @router.post("/edit")
 async def edit_text(req: EditRequest):
     """Surgically modify text in the active PDF session."""
+    print(f"[EDIT REQUEST] page={req.page}, search='{req.originalText}', replace='{req.newText}'")
     try:
         result = service.apply_edit(
             session_id=req.sessionId,
@@ -59,6 +60,7 @@ async def edit_text(req: EditRequest):
             search_text=req.originalText,
             replace_text=req.newText,
         )
+        print(f"[EDIT RESULT] success={result.get('success')}, error={result.get('error')}, strategy={result.get('strategy')}")
         if not result["success"]:
             raise HTTPException(status_code=422, detail=result.get("error", "Edit failed"))
         return result
@@ -67,6 +69,7 @@ async def edit_text(req: EditRequest):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found.")
     except Exception as e:
+        print(f"[EDIT EXCEPTION] {e}")
         raise HTTPException(status_code=500, detail=f"Error executing edit: {e}")
 
 

@@ -61,6 +61,8 @@ class FontInfo:
     encoding: Optional[str] = None       # e.g., WinAnsiEncoding, Identity-H
     is_cid: bool = False
     base_font: Optional[str] = None      # Raw BaseFont name from PDF dict
+    char_to_code: Dict[str, str] = field(default_factory=dict)  # char -> hex code in subset
+    code_to_char: Dict[str, str] = field(default_factory=dict)  # hex code -> char
 
     def to_dict(self) -> Dict[str, Any]:
         return {

@@ -84,6 +84,8 @@ class PDFAnalyzer:
                             encoding=font_info.encoding,
                             is_cid=font_info.is_cid,
                             base_font=font_info.base_font,
+                            char_to_code=font_info.char_to_code,
+                            code_to_char=font_info.code_to_char,
                         )
 
                     origin = span.get("origin", (span_bbox.x, span_bbox.y + span_bbox.height))

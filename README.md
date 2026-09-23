@@ -59,6 +59,24 @@ pdfmodifier/
 
 ---
 
+## Real-World Support Matrix
+
+Verified against real documents (academic reports, aptitude prep guides, financial summaries, multi-column layouts):
+
+| Document Type / Scenario | Detect | Edit | Preserve Font | Export Valid | Status |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Standard 14 Base Fonts** (Helvetica, Times) | Yes | Yes | Yes | Yes | **Supported** |
+| **Full Embedded TrueType / OpenType** | Yes | Yes | Yes | Yes | **Supported** |
+| **Subsetted Fonts** (`BCDEEE+TimesNewRoman`) | Yes | Yes | Yes | Yes | **Supported** |
+| **Kerned / Disjointed `TJ` Arrays** (`(Sess)5(ion)`)| Yes | Yes | Yes | Yes | **Supported** |
+| **Hex-Encoded Content Streams** (`<4c656164>`) | Yes | Yes | Yes | Yes | **Supported** |
+| **Large Multi-Page Documents** (14+ pages) | Yes | Yes | Yes | Yes | **Supported** |
+| **Multi-Column & Table Alignments** | Yes | Yes | Yes | Yes | **Supported** |
+| **Scanned Bitmap PDFs** (no text streams) | Detect | No | N/A | Yes | *OCR Planned* |
+| **Password-Encrypted PDFs** | Detect | No | N/A | Restricted | *Restricted* |
+
+---
+
 ## Font Strategy Matrix
 
 Every text replacement is classified by the engine into one of four states:

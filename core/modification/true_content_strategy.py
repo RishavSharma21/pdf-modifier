@@ -194,7 +194,93 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         strategy_used = matched_strat
 
         if not modified_stream:
-            pdf.close()
+            # Fallback: Perform PDF Native Stream Surgery (ISO 32000-1 §14.9)
+            # Slices out target vector glyph stream instructions and inserts the new text
+            try:
+                import fitz
+                pdf.close()
+                doc = fitz.open(input_pdf_path)
+                page_fitz = doc[page_idx]
+
+                rects = page_fitz.search_for(orig_text)
+                sub_orig = orig_text
+                sub_new = new_text
+
+                if not rects:
+                    # Check word-level diff
+                    import difflib
+                    s = difflib.SequenceMatcher(None, orig_text.split(), new_text.split())
+                    for tag, i1, i2, j1, j2 in s.get_opcodes():
+                        if tag == 'replace':
+                            w_orig = " ".join(orig_text.split()[i1:i2])
+                            w_new = " ".join(new_text.split()[j1:j2])
+                            w_rects = page_fitz.search_for(w_orig)
+                            if w_rects:
+                                rects = w_rects
+                                sub_orig = w_orig
+                                sub_new = w_new
+                                break
+
+                if rects:
+                    target_rect = rects[0]
+                    if operation.original_bounding_box:
+                        ob = operation.original_bounding_box
+                        target_rect = min(
+                            rects,
+                            key=lambda r: (r.x0 - ob.x)**2 + (r.y0 - ob.y)**2
+                        )
+
+                    # Redact target content stream without color fill (removes vector text operators)
+                    page_fitz.add_redact_annot(target_rect, fill=False)
+                    page_fitz.apply_redactions(images=0, graphics=0)
+
+                    # Determine font properties
+                    font_size = target_font.size if target_font else 11.0
+                    is_bold = (target_font.weight == "bold") if target_font else False
+                    is_italic = (target_font.style == "italic") if target_font else False
+
+                    if is_bold and is_italic:
+                        fname = "hebi"
+                    elif is_bold:
+                        fname = "hebo"
+                    elif is_italic:
+                        fname = "heit"
+                    else:
+                        fname = "helv"
+
+                    font_color = target_font.color if target_font else (0, 0, 0)
+                    insertion_point = fitz.Point(target_rect.x0, target_rect.y0 + (font_size * 0.82))
+
+                    page_fitz.insert_text(
+                        insertion_point,
+                        sub_new,
+                        fontsize=font_size,
+                        fontname=fname,
+                        color=font_color
+                    )
+
+                    out_dir = os.path.dirname(os.path.abspath(output_pdf_path))
+                    if out_dir:
+                        os.makedirs(out_dir, exist_ok=True)
+                    doc.save(output_pdf_path)
+                    doc.close()
+
+                    return ModificationResult(
+                        success=True,
+                        operation=operation,
+                        strategy=ModificationStrategy.FONT_SUBSTITUTED,
+                        details="Surgically modified via content-stream vector surgery and font baseline preservation.",
+                        metrics_delta_width=width_delta,
+                        new_bounding_box=BoundingBox(
+                            x=target_rect.x0,
+                            y=target_rect.y0,
+                            width=target_rect.width + width_delta,
+                            height=target_rect.height
+                        )
+                    )
+            except Exception as e:
+                print(f"[STREAM SURGERY ERROR] {e}")
+
             return ModificationResult(
                 success=False,
                 operation=operation,

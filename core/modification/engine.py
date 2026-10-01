@@ -1,9 +1,9 @@
 """PDF Modification Engine Orchestrator."""
 from __future__ import annotations
 import os
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from ..models.operation import EditOperation, ModificationResult, ModificationStrategy
-from ..models.text_object import EditableText
+from ..models.text_object import EditableText, BoundingBox
 from ..pdf.analyzer import PDFAnalyzer
 from .strategy import TextModificationStrategy
 from .true_content_strategy import TrueContentModificationStrategy

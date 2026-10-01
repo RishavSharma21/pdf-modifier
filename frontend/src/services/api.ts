@@ -218,6 +218,7 @@ export async function adjustPdfImage(
   const formData = new FormData();
   formData.append('sessionId', sessionId);
   formData.append('page', page.toString());
+  formData.append('boundingBox', JSON.stringify(originalBoundingBox));
   formData.append('originalBoundingBox', JSON.stringify(originalBoundingBox));
   formData.append('newBoundingBox', JSON.stringify(newBoundingBox));
   if (file) {
@@ -227,10 +228,17 @@ export async function adjustPdfImage(
     formData.append('cropBox', JSON.stringify(cropBox));
   }
 
-  const res = await fetch(`${API_BASE}/adjust-image`, {
+  let res = await fetch(`${API_BASE}/adjust-image`, {
     method: 'POST',
     body: formData,
   });
+
+  if (res.status === 404) {
+    res = await fetch(`${API_BASE}/replace-image`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Adjust image failed' }));
@@ -239,5 +247,6 @@ export async function adjustPdfImage(
 
   return res.json();
 }
+
 
 

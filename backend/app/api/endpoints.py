@@ -197,47 +197,20 @@ async def delete_image(req: DeleteImageRequest):
 
 @router.post("/replace-image")
 async def replace_image(
-    file: UploadFile = File(...),
     sessionId: str = Form(...),
     page: int = Form(1),
-    boundingBox: str = Form(...)
-):
-    """Replace an image at the specified bounding box with an uploaded file."""
-    try:
-        import json
-        bbox = json.loads(boundingBox)
-        image_bytes = await file.read()
-        result = service.replace_image(
-            session_id=sessionId,
-            page_number=page,
-            bounding_box=bbox,
-            image_bytes=image_bytes
-        )
-        if not result.get("success"):
-            raise HTTPException(status_code=422, detail=result.get("error", "Replace image failed"))
-        return result
-    except HTTPException:
-        raise
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Session not found.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error replacing image: {e}")
-
-
-@router.post("/adjust-image")
-async def adjust_image(
-    sessionId: str = Form(...),
-    page: int = Form(1),
-    originalBoundingBox: str = Form(...),
-    newBoundingBox: str = Form(...),
+    boundingBox: str = Form(...),
+    newBoundingBox: Optional[str] = Form(None),
+    originalBoundingBox: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     cropBox: Optional[str] = Form(None)
 ):
-    """Drag, resize, crop, or replace an image/logo on a page."""
+    """Replace, move, resize, or crop an image at bounding box."""
     try:
         import json
-        orig_bbox = json.loads(originalBoundingBox)
-        new_bbox = json.loads(newBoundingBox)
+        raw_orig = originalBoundingBox or boundingBox
+        orig_bbox = json.loads(raw_orig)
+        target_bbox = json.loads(newBoundingBox) if newBoundingBox else orig_bbox
         crop_data = json.loads(cropBox) if cropBox else None
         image_bytes = await file.read() if file else None
 
@@ -245,19 +218,42 @@ async def adjust_image(
             session_id=sessionId,
             page_number=page,
             original_bounding_box=orig_bbox,
-            new_bounding_box=new_bbox,
+            new_bounding_box=target_bbox,
             image_bytes=image_bytes,
             crop_box=crop_data
         )
         if not result.get("success"):
-            raise HTTPException(status_code=422, detail=result.get("error", "Adjust image failed"))
+            raise HTTPException(status_code=422, detail=result.get("error", "Replace/adjust image failed"))
         return result
     except HTTPException:
         raise
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Session not found.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error adjusting image: {e}")
+        raise HTTPException(status_code=500, detail=f"Error replacing/adjusting image: {e}")
+
+
+@router.post("/adjust-image")
+async def adjust_image(
+    sessionId: str = Form(...),
+    page: int = Form(1),
+    originalBoundingBox: Optional[str] = Form(None),
+    boundingBox: Optional[str] = Form(None),
+    newBoundingBox: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    cropBox: Optional[str] = Form(None)
+):
+    """Drag, resize, crop, or replace an image/logo on a page."""
+    return await replace_image(
+        sessionId=sessionId,
+        page=page,
+        boundingBox=boundingBox or originalBoundingBox or "{}",
+        newBoundingBox=newBoundingBox,
+        originalBoundingBox=originalBoundingBox,
+        file=file,
+        cropBox=cropBox
+    )
+
 
 
 @router.get("/download/{session_id}")

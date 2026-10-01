@@ -2597,6 +2597,101 @@ body {
   box-shadow: 0 2px 10px rgba(47,111,235,0.45);
 }
 
+/* Image Editor Subbar (Docked above viewport, zero cut-off, spacious) */
+.image-editor-subbar {
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+.image-subbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.image-subbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.image-subbar-dim {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.dim-pos {
+  color: var(--text-2);
+}
+
+.editor-subbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-subbar-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-subbar-action:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.btn-subbar-action.btn-danger {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.btn-subbar-action.btn-danger:hover {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.btn-success-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #16a34a;
+  color: #ffffff;
+  border: 1px solid transparent;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.12s ease;
+}
+
+.btn-success-save:hover:not(:disabled) {
+  background: #15803d;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.4);
+}
+
+.btn-success-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ==========================================================================
    Find & Replace Panel (Refined Modern Glass Design)
    ========================================================================== */
@@ -3306,33 +3401,31 @@ body {
   background: #15803d;
 }
 
-/* Resize Handles for Logo Adjustment */
-.resize-handle {
+/* Resize Handles for Logo Adjustment (Corner handles) */
+.resize-handle-corner {
   position: absolute;
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   background: #ffffff;
-  border: 1.5px solid #2563eb;
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  z-index: 52;
+  border: 2px solid #2563eb;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  z-index: 55;
   box-sizing: border-box;
+  touch-action: none;
 }
 
-.resize-handle:hover {
+.resize-handle-corner:hover {
   background: #2563eb;
-  transform: scale(1.25);
+  transform: scale(1.35);
   transition: transform 0.1s ease;
 }
 
-.resize-handle-nw { top: -4.5px; left: -4.5px; cursor: nwse-resize; }
-.resize-handle-n  { top: -4.5px; left: calc(50% - 4.5px); cursor: ns-resize; }
-.resize-handle-ne { top: -4.5px; right: -4.5px; cursor: nesw-resize; }
-.resize-handle-e  { top: calc(50% - 4.5px); right: -4.5px; cursor: ew-resize; }
-.resize-handle-se { bottom: -4.5px; right: -4.5px; cursor: nwse-resize; }
-.resize-handle-s  { bottom: -4.5px; left: calc(50% - 4.5px); cursor: ns-resize; }
-.resize-handle-sw { bottom: -4.5px; left: -4.5px; cursor: nesw-resize; }
-.resize-handle-w  { top: calc(50% - 4.5px); left: -4.5px; cursor: ew-resize; }
+.resize-handle-nw { top: -5.5px; left: -5.5px; cursor: nwse-resize; }
+.resize-handle-ne { top: -5.5px; right: -5.5px; cursor: nesw-resize; }
+.resize-handle-se { bottom: -5.5px; right: -5.5px; cursor: nwse-resize; }
+.resize-handle-sw { bottom: -5.5px; left: -5.5px; cursor: nesw-resize; }
+
 
 .image-dimension-badge {
   position: absolute;

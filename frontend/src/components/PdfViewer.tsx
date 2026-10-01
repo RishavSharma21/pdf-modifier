@@ -4,16 +4,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { InlineEditorBar } from './InlineEditorBar';
+import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
-import {
-  Image as ImageIcon,
-  Trash2,
-  Upload,
-  X,
-  Crop as CropIcon,
-  Check,
-  RotateCcw,
-} from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import { useToast } from './Toast';
 
 // Set up worker
@@ -131,20 +124,14 @@ interface PdfPageItemProps {
   allSearchMatchIds?: string[];
   searchQuery?: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  imageFileInputRef: React.RefObject<HTMLInputElement | null>;
   onStartEdit: (obj: EditableText) => void;
   setActiveText: (val: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onSelectImageWithSnapshot: (img: ImageObject, snapshotUrl: string | null) => void;
   onPointerDownImage: (
     e: React.PointerEvent,
-    type: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w'
+    type: 'move' | 'nw' | 'ne' | 'se' | 'sw'
   ) => void;
-  onOpenCrop: () => void;
-  onResetAdjustment: () => void;
-  onSaveAdjustment: () => void;
-  onDeleteSelectedImage: () => void;
-  onCloseSelectedImage: () => void;
 }
 
 const PdfPageItem: React.FC<PdfPageItemProps> = ({
@@ -166,17 +153,11 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   allSearchMatchIds,
   searchQuery,
   inputRef,
-  imageFileInputRef,
   onStartEdit,
   setActiveText,
   handleKeyDown,
   onSelectImageWithSnapshot,
   onPointerDownImage,
-  onOpenCrop,
-  onResetAdjustment,
-  onSaveAdjustment,
-  onDeleteSelectedImage,
-  onCloseSelectedImage,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -337,160 +318,133 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         const width = curW * scale;
         const height = curH * scale;
 
+        const isMovedOrReplaced = isSelected && (
+          Math.abs(curX - bbox.x) > 0.5 ||
+          Math.abs(curY - bbox.y) > 0.5 ||
+          Math.abs(curW - bbox.width) > 0.5 ||
+          Math.abs(curH - bbox.height) > 0.5 ||
+          Boolean(adjustmentState?.replacementFile)
+        );
+
         return (
-          <div
-            key={img.id}
-            className={`image-object-overlay ${isSelected ? 'selected-image' : ''}`}
-            style={{
-              position: 'absolute',
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-              zIndex: isSelected ? 35 : 15,
-              cursor: isSelected ? 'move' : 'pointer',
-              touchAction: isSelected ? 'none' : 'auto',
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isSelected) {
-                // Capture snapshot of this logo from the rendered canvas for smooth dragging/cropping
-                let snap: string | null = null;
-                const canvas = canvasRef.current;
-                if (canvas) {
-                  try {
-                    const dpr = window.devicePixelRatio || 1;
-                    const sx = bbox.x * scale * dpr;
-                    const sy = bbox.y * scale * dpr;
-                    const sw = bbox.width * scale * dpr;
-                    const sh = bbox.height * scale * dpr;
-                    if (sw > 0 && sh > 0) {
-                      const off = document.createElement('canvas');
-                      off.width = Math.max(Math.round(sw), 1);
-                      off.height = Math.max(Math.round(sh), 1);
-                      const ctx = off.getContext('2d');
-                      if (ctx) {
-                        ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, off.width, off.height);
-                        snap = off.toDataURL('image/png');
-                      }
-                    }
-                  } catch {}
-                }
-                onSelectImageWithSnapshot(img, snap);
-              }
-            }}
-            onPointerDown={(e) => {
-              if (isSelected) {
-                onPointerDownImage(e, 'move');
-              }
-            }}
-          >
-            {/* Visual preview of moving / replaced / cropped logo */}
-            {isSelected && (adjustmentState?.previewUrl || activeSnapshotUrl) && (
-              <img
-                src={adjustmentState?.previewUrl || activeSnapshotUrl || ''}
-                alt="Logo preview"
+          <React.Fragment key={img.id}>
+            {/* White cover mask over original location to prevent ghosting/double-image bleed-through when moved or replaced */}
+            {isMovedOrReplaced && (
+              <div
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  pointerEvents: 'none',
-                  background: 'rgba(255, 255, 255, 0.45)',
+                  position: 'absolute',
+                  left: `${bbox.x * scale}px`,
+                  top: `${bbox.y * scale}px`,
+                  width: `${bbox.width * scale}px`,
+                  height: `${bbox.height * scale}px`,
+                  background: '#ffffff',
+                  border: '1.5px dashed #94a3b8',
                   borderRadius: '2px',
-                  display: 'block',
+                  zIndex: 25,
+                  pointerEvents: 'none',
+                  boxSizing: 'border-box',
                 }}
-                draggable={false}
               />
             )}
 
-            <div className="image-badge">
-              <ImageIcon size={10} />
-              <span>Logo / Image</span>
+            <div
+              className={`image-object-overlay ${isSelected ? 'selected-image' : ''}`}
+              style={{
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+                zIndex: isSelected ? 35 : 15,
+                cursor: isSelected ? 'move' : 'pointer',
+                touchAction: isSelected ? 'none' : 'auto',
+                background: isSelected ? '#ffffff' : undefined,
+                boxSizing: 'border-box',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isSelected) {
+                  // Capture snapshot of this logo from the rendered canvas for smooth dragging/cropping
+                  let snap: string | null = null;
+                  const canvas = canvasRef.current;
+                  if (canvas) {
+                    try {
+                      const dpr = window.devicePixelRatio || 1;
+                      const sx = bbox.x * scale * dpr;
+                      const sy = bbox.y * scale * dpr;
+                      const sw = bbox.width * scale * dpr;
+                      const sh = bbox.height * scale * dpr;
+                      if (sw > 0 && sh > 0) {
+                        const off = document.createElement('canvas');
+                        off.width = Math.max(Math.round(sw), 1);
+                        off.height = Math.max(Math.round(sh), 1);
+                        const ctx = off.getContext('2d');
+                        if (ctx) {
+                          ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, off.width, off.height);
+                          snap = off.toDataURL('image/png');
+                        }
+                      }
+                    } catch {}
+                  }
+                  onSelectImageWithSnapshot(img, snap);
+                }
+              }}
+              onPointerDown={(e) => {
+                if (isSelected) {
+                  onPointerDownImage(e, 'move');
+                }
+              }}
+            >
+              {/* Visual preview of moving / replaced / cropped logo */}
+              {isSelected && (adjustmentState?.previewUrl || activeSnapshotUrl) && (
+                <img
+                  src={adjustmentState?.previewUrl || activeSnapshotUrl || ''}
+                  alt="Logo preview"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    pointerEvents: 'none',
+                    background: '#ffffff',
+                    borderRadius: '2px',
+                    display: 'block',
+                  }}
+                  draggable={false}
+                />
+              )}
+
+              <div className="image-badge">
+                <ImageIcon size={10} />
+                <span>Logo</span>
+              </div>
+
+              {isSelected && (
+                <>
+                  {/* 4 Corner Drag & Proportional Resize Handles */}
+                  <div
+                    className="resize-handle-corner resize-handle-nw"
+                    onPointerDown={(e) => onPointerDownImage(e, 'nw')}
+                    title="Drag to resize"
+                  />
+                  <div
+                    className="resize-handle-corner resize-handle-ne"
+                    onPointerDown={(e) => onPointerDownImage(e, 'ne')}
+                    title="Drag to resize"
+                  />
+                  <div
+                    className="resize-handle-corner resize-handle-se"
+                    onPointerDown={(e) => onPointerDownImage(e, 'se')}
+                    title="Drag to resize"
+                  />
+                  <div
+                    className="resize-handle-corner resize-handle-sw"
+                    onPointerDown={(e) => onPointerDownImage(e, 'sw')}
+                    title="Drag to resize"
+                  />
+                </>
+              )}
             </div>
-
-            {isSelected && (
-              <>
-                {/* 8 Drag & Resize Handles */}
-                <div className="resize-handle resize-handle-nw" onPointerDown={(e) => onPointerDownImage(e, 'nw')} />
-                <div className="resize-handle resize-handle-n" onPointerDown={(e) => onPointerDownImage(e, 'n')} />
-                <div className="resize-handle resize-handle-ne" onPointerDown={(e) => onPointerDownImage(e, 'ne')} />
-                <div className="resize-handle resize-handle-e" onPointerDown={(e) => onPointerDownImage(e, 'e')} />
-                <div className="resize-handle resize-handle-se" onPointerDown={(e) => onPointerDownImage(e, 'se')} />
-                <div className="resize-handle resize-handle-s" onPointerDown={(e) => onPointerDownImage(e, 's')} />
-                <div className="resize-handle resize-handle-sw" onPointerDown={(e) => onPointerDownImage(e, 'sw')} />
-                <div className="resize-handle resize-handle-w" onPointerDown={(e) => onPointerDownImage(e, 'w')} />
-
-                {/* Dimension & Coordinates Live Badge */}
-                <div className="image-dimension-badge">
-                  {Math.round(curW)} × {Math.round(curH)} pt • X:{Math.round(curX)} Y:{Math.round(curY)}
-                </div>
-
-                {/* Floating Action Pill Toolbar */}
-                <div
-                  className="image-actions-pill"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {adjustmentState?.isModified && (
-                    <>
-                      <button
-                        className="btn btn-sm btn-image-action btn-success"
-                        onClick={onSaveAdjustment}
-                        title="Save adjusted logo (position, size, crop) to PDF"
-                      >
-                        <Check size={12} />
-                        <span>Save Changes</span>
-                      </button>
-                      <button
-                        className="btn btn-sm btn-image-action"
-                        onClick={onResetAdjustment}
-                        title="Reset to original position & size"
-                      >
-                        <RotateCcw size={12} />
-                        <span>Reset</span>
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    className="btn btn-sm btn-image-action"
-                    onClick={onOpenCrop}
-                    title="Crop logo borders or aspect ratio"
-                  >
-                    <CropIcon size={12} />
-                    <span>Crop</span>
-                  </button>
-
-                  <button
-                    className="btn btn-sm btn-image-action"
-                    onClick={() => imageFileInputRef.current?.click()}
-                    title="Replace with your own logo or image"
-                  >
-                    <Upload size={12} />
-                    <span>Replace Logo</span>
-                  </button>
-
-                  <button
-                    className="btn btn-sm btn-image-action btn-danger"
-                    onClick={onDeleteSelectedImage}
-                    title="Delete this image/logo from the PDF"
-                  >
-                    <Trash2 size={12} />
-                    <span>Delete</span>
-                  </button>
-
-                  <button
-                    className="btn btn-icon btn-sm"
-                    onClick={onCloseSelectedImage}
-                    title="Close"
-                    style={{ padding: '2px 4px' }}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          </React.Fragment>
         );
       })}
 
@@ -856,10 +810,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setActiveObj(null);
   };
 
-  // Interactive Drag & Resize Pointer Listener
+  // Interactive Drag & Proportional Resize Pointer Listener
   const handlePointerDownImage = (
     e: React.PointerEvent,
-    dragType: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w'
+    dragType: 'move' | 'nw' | 'ne' | 'se' | 'sw'
   ) => {
     e.stopPropagation();
     e.preventDefault();
@@ -873,6 +827,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       width: adjustmentState.width,
       height: adjustmentState.height,
     };
+    const aspect = Math.max(0.1, initialBox.width / (initialBox.height || 1));
 
     const handlePointerMove = (moveEvt: PointerEvent) => {
       const deltaX = (moveEvt.clientX - startClientX) / scale;
@@ -888,25 +843,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         if (dragType === 'move') {
           nextX = Math.round((initialBox.x + deltaX) * 10) / 10;
           nextY = Math.round((initialBox.y + deltaY) * 10) / 10;
-        } else {
-          if (dragType.includes('e')) {
-            nextW = Math.max(15, Math.round((initialBox.width + deltaX) * 10) / 10);
-          }
-          if (dragType.includes('s')) {
-            nextH = Math.max(15, Math.round((initialBox.height + deltaY) * 10) / 10);
-          }
-          if (dragType.includes('w')) {
-            const maxDelta = initialBox.width - 15;
-            const clamped = Math.min(maxDelta, deltaX);
-            nextX = Math.round((initialBox.x + clamped) * 10) / 10;
-            nextW = Math.round((initialBox.width - clamped) * 10) / 10;
-          }
-          if (dragType.includes('n')) {
-            const maxDelta = initialBox.height - 15;
-            const clamped = Math.min(maxDelta, deltaY);
-            nextY = Math.round((initialBox.y + clamped) * 10) / 10;
-            nextH = Math.round((initialBox.height - clamped) * 10) / 10;
-          }
+        } else if (dragType === 'se') {
+          // Bottom-Right handle
+          nextW = Math.max(15, Math.round((initialBox.width + deltaX) * 10) / 10);
+          nextH = Math.max(10, Math.round((nextW / aspect) * 10) / 10);
+        } else if (dragType === 'sw') {
+          // Bottom-Left handle
+          const maxDelta = initialBox.width - 15;
+          const clamped = Math.min(maxDelta, deltaX);
+          nextX = Math.round((initialBox.x + clamped) * 10) / 10;
+          nextW = Math.max(15, Math.round((initialBox.width - clamped) * 10) / 10);
+          nextH = Math.max(10, Math.round((nextW / aspect) * 10) / 10);
+        } else if (dragType === 'ne') {
+          // Top-Right handle
+          nextW = Math.max(15, Math.round((initialBox.width + deltaX) * 10) / 10);
+          nextH = Math.max(10, Math.round((nextW / aspect) * 10) / 10);
+          nextY = Math.round((initialBox.y + initialBox.height - nextH) * 10) / 10;
+        } else if (dragType === 'nw') {
+          // Top-Left handle
+          const maxDelta = initialBox.width - 15;
+          const clamped = Math.min(maxDelta, deltaX);
+          nextX = Math.round((initialBox.x + clamped) * 10) / 10;
+          nextW = Math.max(15, Math.round((initialBox.width - clamped) * 10) / 10);
+          nextH = Math.max(10, Math.round((nextW / aspect) * 10) / 10);
+          nextY = Math.round((initialBox.y + initialBox.height - nextH) * 10) / 10;
         }
 
         return {
@@ -1044,6 +1004,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         />
       )}
 
+      {/* Docked Contextual Subbar for Logo / Image Adjustment */}
+      {selectedImage && (
+        <ImageEditorSubbar
+          selectedImage={selectedImage}
+          adjustmentState={adjustmentState}
+          onOpenCrop={() => setIsCropModalOpen(true)}
+          onReplaceClick={() => imageFileInputRef.current?.click()}
+          onReset={handleResetAdjustment}
+          onDelete={handleDeleteSelectedImage}
+          onSave={handleSaveAdjustment}
+          onCancel={() => {
+            setSelectedImage(null);
+            setAdjustmentState(null);
+            setActiveSnapshotUrl(null);
+          }}
+          isSubmitting={isProcessing}
+        />
+      )}
+
       {/* Hidden Image Upload Input */}
       <input
         ref={imageFileInputRef}
@@ -1103,21 +1082,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               allSearchMatchIds={allSearchMatchIds}
               searchQuery={searchQuery}
               inputRef={inputRef}
-              imageFileInputRef={imageFileInputRef}
               onStartEdit={handleStartEdit}
               setActiveText={setActiveText}
               handleKeyDown={handleKeyDown}
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}
-              onOpenCrop={() => setIsCropModalOpen(true)}
-              onResetAdjustment={handleResetAdjustment}
-              onSaveAdjustment={handleSaveAdjustment}
-              onDeleteSelectedImage={handleDeleteSelectedImage}
-              onCloseSelectedImage={() => {
-                setSelectedImage(null);
-                setAdjustmentState(null);
-                setActiveSnapshotUrl(null);
-              }}
             />
           ))}
         </div>

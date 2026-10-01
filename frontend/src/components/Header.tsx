@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
             onHomeClick();
           }
         }}
-        title="Go to landing page / upload new file"
+        aria-label="PDF Modifier home"
       >
         <div className="brand-logo">
           <FileText size={16} />
@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="header-center">
         {hasDocument && filename && (
           <div className="header-doc-capsule">
-            <span className="doc-capsule-name" title={filename}>
+            <span className="doc-capsule-name">
               {filename}
             </span>
             <div className="doc-capsule-divider" />
@@ -84,7 +84,6 @@ export const Header: React.FC<HeaderProps> = ({
             className={`btn-utility-item theme-toggle-btn landing-theme-toggle ${theme === 'dark' ? 'is-dark' : 'is-light'}`}
             onClick={onToggleTheme}
             id="btn-landing-theme-toggle"
-            title={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
             aria-label="Toggle theme"
           >
             <div className="theme-icon-track">
@@ -102,7 +101,6 @@ export const Header: React.FC<HeaderProps> = ({
                 className="btn-utility-item"
                 onClick={onFindReplaceClick}
                 id="btn-find-replace"
-                title="Find & Replace (Ctrl+F)"
                 aria-label="Find & Replace"
               >
                 <Search size={14} />
@@ -113,7 +111,6 @@ export const Header: React.FC<HeaderProps> = ({
               className="btn-utility-item btn-shortcuts-utility"
               onClick={onShortcutsClick}
               id="btn-shortcuts"
-              title="Keyboard Shortcuts (?)"
               aria-label="Keyboard Shortcuts"
             >
               <Keyboard size={14} />
@@ -124,7 +121,6 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`btn-utility-item theme-toggle-btn ${theme === 'dark' ? 'is-dark' : 'is-light'}`}
                 onClick={onToggleTheme}
                 id="btn-theme-toggle"
-                title={theme === 'dark' ? 'Switch to Light theme (Ctrl+Shift+L)' : 'Switch to Dark theme (Ctrl+Shift+L)'}
                 aria-label="Toggle theme"
               >
                 <div className="theme-icon-track">
@@ -143,7 +139,6 @@ export const Header: React.FC<HeaderProps> = ({
               className={`btn-mobile-more ${isMobileMenuOpen ? 'active' : ''}`}
               onClick={() => setIsMobileMenuOpen((prev) => !prev)}
               aria-label="More options"
-              title="More options"
               id="btn-mobile-more"
             >
               <MoreVertical size={16} />
@@ -204,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="btn btn-header-secondary"
               onClick={onHomeClick}
               id="btn-new-file"
-              title="Open or upload a new PDF file"
+              aria-label="Open or upload a new PDF file"
             >
               <FilePlus size={13} />
               <span className="btn-text-desktop">New file</span>
@@ -215,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onExportClick}
               disabled={isDownloading}
               id="btn-download-pdf"
-              title="Download modified PDF file"
+              aria-label="Download modified PDF file"
             >
               {isDownloading ? (
                 <>

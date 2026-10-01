@@ -4491,4 +4491,93 @@ html.theme-transitioning .find-replace-card {
   }
 }
 
+/* ==========================================================================
+   Image Editor — Mobile Responsive (≤ 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* The image-editor-subbar inherits the .pdf-editor-subbar bottom-dock
+     positioning from the existing mobile rule above. These additions
+     layer on top to handle the image-editor-specific elements. */
 
+  /* Scrollable row so all action buttons are reachable on narrow screens */
+  .image-editor-subbar .editor-subbar-center {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 6px !important;
+    flex-shrink: 1 !important;
+    scrollbar-width: none !important;
+  }
+  .image-editor-subbar .editor-subbar-center::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  /* Slightly compact action buttons */
+  .btn-subbar-action {
+    padding: 5px 9px !important;
+    font-size: 11.5px !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .btn-success-save {
+    padding: 5px 12px !important;
+    font-size: 11.5px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Hide verbose dim/coords on small screens */
+  .image-subbar-dim {
+    display: none !important;
+  }
+
+  /* Larger touch targets for corner handles on mobile */
+  .resize-handle-corner {
+    width: 18px !important;
+    height: 18px !important;
+    border-width: 2.5px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+  }
+  .resize-handle-nw { top: -9px !important; left: -9px !important; }
+  .resize-handle-ne { top: -9px !important; right: -9px !important; }
+  .resize-handle-se { bottom: -9px !important; right: -9px !important; }
+  .resize-handle-sw { bottom: -9px !important; left: -9px !important; }
+
+  /* Image dimension badge: keep below image but less intrusive */
+  .image-dimension-badge {
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+    bottom: -18px !important;
+  }
+
+  /* Crop modal — full-screen on mobile */
+  .crop-modal-box {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+}
+
+/* Small phones ≤ 480px: icon-only action buttons */
+@media (max-width: 480px) {
+  .image-subbar-title {
+    font-size: 12px !important;
+  }
+
+  .btn-subbar-action {
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+  }
+
+  .btn-subbar-action span {
+    display: none; /* icon-only on very small screens */
+  }
+
+  .btn-success-save {
+    padding: 5px 10px !important;
+    min-width: 36px !important;
+  }
+}

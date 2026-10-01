@@ -5,8 +5,14 @@ export const getApiBase = (): string => {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     return `${envUrl.trim().replace(/\/+$/, '')}/api/pdf`;
   }
-  if (typeof window !== 'undefined' && window.location.hostname) {
-    return `http://${window.location.hostname}:8000/api/pdf`;
+  // Only use localhost:8000 when actually running locally — never use :8000 on deployed hosts
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `http://${host}:8000/api/pdf`;
+    }
+    // On Vercel (or any deployed host), use the Render backend
+    return 'https://pdf-modifier-backend.onrender.com/api/pdf';
   }
   return 'http://localhost:8000/api/pdf';
 };

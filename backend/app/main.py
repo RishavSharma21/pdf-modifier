@@ -44,3 +44,10 @@ def health_check():
         "engine": "PDFModifier",
         "version": "0.1.0"
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=port)
+

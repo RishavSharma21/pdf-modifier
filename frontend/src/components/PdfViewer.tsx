@@ -4,7 +4,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { InlineEditorBar } from './InlineEditorBar';
-import { Image as ImageIcon, Trash2, Upload, X } from 'lucide-react';
+import { ImageCropModal } from './ImageCropModal';
+import {
+  Image as ImageIcon,
+  Trash2,
+  Upload,
+  X,
+  Crop as CropIcon,
+  Check,
+  RotateCcw,
+} from 'lucide-react';
 import { useToast } from './Toast';
 
 // Set up worker
@@ -89,6 +98,17 @@ const computeWordHighlights = (
   return highlights;
 };
 
+export interface ImageAdjustmentState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  replacementFile: File | Blob | null;
+  previewUrl: string | null;
+  cropBox: any | null;
+  isModified: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Single PDF Page Component (Stacked continuously in the document)
 // ---------------------------------------------------------------------------
@@ -105,6 +125,8 @@ interface PdfPageItemProps {
   activeColor: string;
   activeBgColor: string;
   selectedImage: ImageObject | null;
+  adjustmentState: ImageAdjustmentState | null;
+  activeSnapshotUrl: string | null;
   activeMatchKey: string | null;
   allSearchMatchIds?: string[];
   searchQuery?: string;
@@ -113,7 +135,14 @@ interface PdfPageItemProps {
   onStartEdit: (obj: EditableText) => void;
   setActiveText: (val: string) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onSelectImage: (img: ImageObject) => void;
+  onSelectImageWithSnapshot: (img: ImageObject, snapshotUrl: string | null) => void;
+  onPointerDownImage: (
+    e: React.PointerEvent,
+    type: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w'
+  ) => void;
+  onOpenCrop: () => void;
+  onResetAdjustment: () => void;
+  onSaveAdjustment: () => void;
   onDeleteSelectedImage: () => void;
   onCloseSelectedImage: () => void;
 }
@@ -131,6 +160,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   activeColor,
   activeBgColor,
   selectedImage,
+  adjustmentState,
+  activeSnapshotUrl,
   activeMatchKey,
   allSearchMatchIds,
   searchQuery,
@@ -139,7 +170,11 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   onStartEdit,
   setActiveText,
   handleKeyDown,
-  onSelectImage,
+  onSelectImageWithSnapshot,
+  onPointerDownImage,
+  onOpenCrop,
+  onResetAdjustment,
+  onSaveAdjustment,
   onDeleteSelectedImage,
   onCloseSelectedImage,
 }) => {
@@ -290,11 +325,17 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       {/* Interactive Image / Logo Overlays */}
       {pageImages.map((img) => {
         const bbox = img.boundingBox;
-        const left = bbox.x * scale;
-        const top = bbox.y * scale;
-        const width = bbox.width * scale;
-        const height = bbox.height * scale;
         const isSelected = selectedImage?.id === img.id;
+
+        const curX = isSelected && adjustmentState ? adjustmentState.x : bbox.x;
+        const curY = isSelected && adjustmentState ? adjustmentState.y : bbox.y;
+        const curW = isSelected && adjustmentState ? adjustmentState.width : bbox.width;
+        const curH = isSelected && adjustmentState ? adjustmentState.height : bbox.height;
+
+        const left = curX * scale;
+        const top = curY * scale;
+        const width = curW * scale;
+        const height = curH * scale;
 
         return (
           <div
@@ -307,46 +348,147 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               width: `${width}px`,
               height: `${height}px`,
               zIndex: isSelected ? 35 : 15,
+              cursor: isSelected ? 'move' : 'pointer',
+              touchAction: isSelected ? 'none' : 'auto',
             }}
             onClick={(e) => {
               e.stopPropagation();
-              onSelectImage(img);
+              if (!isSelected) {
+                // Capture snapshot of this logo from the rendered canvas for smooth dragging/cropping
+                let snap: string | null = null;
+                const canvas = canvasRef.current;
+                if (canvas) {
+                  try {
+                    const dpr = window.devicePixelRatio || 1;
+                    const sx = bbox.x * scale * dpr;
+                    const sy = bbox.y * scale * dpr;
+                    const sw = bbox.width * scale * dpr;
+                    const sh = bbox.height * scale * dpr;
+                    if (sw > 0 && sh > 0) {
+                      const off = document.createElement('canvas');
+                      off.width = Math.max(Math.round(sw), 1);
+                      off.height = Math.max(Math.round(sh), 1);
+                      const ctx = off.getContext('2d');
+                      if (ctx) {
+                        ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, off.width, off.height);
+                        snap = off.toDataURL('image/png');
+                      }
+                    }
+                  } catch {}
+                }
+                onSelectImageWithSnapshot(img, snap);
+              }
+            }}
+            onPointerDown={(e) => {
+              if (isSelected) {
+                onPointerDownImage(e, 'move');
+              }
             }}
           >
+            {/* Visual preview of moving / replaced / cropped logo */}
+            {isSelected && (adjustmentState?.previewUrl || activeSnapshotUrl) && (
+              <img
+                src={adjustmentState?.previewUrl || activeSnapshotUrl || ''}
+                alt="Logo preview"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  pointerEvents: 'none',
+                  background: 'rgba(255, 255, 255, 0.45)',
+                  borderRadius: '2px',
+                  display: 'block',
+                }}
+                draggable={false}
+              />
+            )}
+
             <div className="image-badge">
               <ImageIcon size={10} />
               <span>Logo / Image</span>
             </div>
 
             {isSelected && (
-              <div className="image-actions-pill" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="btn btn-sm btn-image-action"
-                  onClick={() => imageFileInputRef.current?.click()}
-                  title="Replace with your own logo or image"
-                >
-                  <Upload size={12} />
-                  <span>Replace Logo</span>
-                </button>
+              <>
+                {/* 8 Drag & Resize Handles */}
+                <div className="resize-handle resize-handle-nw" onPointerDown={(e) => onPointerDownImage(e, 'nw')} />
+                <div className="resize-handle resize-handle-n" onPointerDown={(e) => onPointerDownImage(e, 'n')} />
+                <div className="resize-handle resize-handle-ne" onPointerDown={(e) => onPointerDownImage(e, 'ne')} />
+                <div className="resize-handle resize-handle-e" onPointerDown={(e) => onPointerDownImage(e, 'e')} />
+                <div className="resize-handle resize-handle-se" onPointerDown={(e) => onPointerDownImage(e, 'se')} />
+                <div className="resize-handle resize-handle-s" onPointerDown={(e) => onPointerDownImage(e, 's')} />
+                <div className="resize-handle resize-handle-sw" onPointerDown={(e) => onPointerDownImage(e, 'sw')} />
+                <div className="resize-handle resize-handle-w" onPointerDown={(e) => onPointerDownImage(e, 'w')} />
 
-                <button
-                  className="btn btn-sm btn-image-action btn-danger"
-                  onClick={onDeleteSelectedImage}
-                  title="Delete this image/logo from the PDF"
-                >
-                  <Trash2 size={12} />
-                  <span>Delete</span>
-                </button>
+                {/* Dimension & Coordinates Live Badge */}
+                <div className="image-dimension-badge">
+                  {Math.round(curW)} × {Math.round(curH)} pt • X:{Math.round(curX)} Y:{Math.round(curY)}
+                </div>
 
-                <button
-                  className="btn btn-icon btn-sm"
-                  onClick={onCloseSelectedImage}
-                  title="Close"
-                  style={{ padding: '2px 4px' }}
+                {/* Floating Action Pill Toolbar */}
+                <div
+                  className="image-actions-pill"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <X size={12} />
-                </button>
-              </div>
+                  {adjustmentState?.isModified && (
+                    <>
+                      <button
+                        className="btn btn-sm btn-image-action btn-success"
+                        onClick={onSaveAdjustment}
+                        title="Save adjusted logo (position, size, crop) to PDF"
+                      >
+                        <Check size={12} />
+                        <span>Save Changes</span>
+                      </button>
+                      <button
+                        className="btn btn-sm btn-image-action"
+                        onClick={onResetAdjustment}
+                        title="Reset to original position & size"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Reset</span>
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    className="btn btn-sm btn-image-action"
+                    onClick={onOpenCrop}
+                    title="Crop logo borders or aspect ratio"
+                  >
+                    <CropIcon size={12} />
+                    <span>Crop</span>
+                  </button>
+
+                  <button
+                    className="btn btn-sm btn-image-action"
+                    onClick={() => imageFileInputRef.current?.click()}
+                    title="Replace with your own logo or image"
+                  >
+                    <Upload size={12} />
+                    <span>Replace Logo</span>
+                  </button>
+
+                  <button
+                    className="btn btn-sm btn-image-action btn-danger"
+                    onClick={onDeleteSelectedImage}
+                    title="Delete this image/logo from the PDF"
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
+
+                  <button
+                    className="btn btn-icon btn-sm"
+                    onClick={onCloseSelectedImage}
+                    title="Close"
+                    style={{ padding: '2px 4px' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </>
             )}
           </div>
         );
@@ -464,6 +606,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 // ---------------------------------------------------------------------------
 interface PdfViewerProps {
   pdfUrl: string;
+  pdfDoc?: any;
+  onPdfDocLoaded?: (doc: any) => void;
   currentPage: number;
   totalPages?: number;
   pages?: PageMeta[];
@@ -487,11 +631,20 @@ interface PdfViewerProps {
   ) => Promise<void>;
   onDeleteImage?: (boundingBox: any) => Promise<void>;
   onReplaceImage?: (boundingBox: any, file: File) => Promise<void>;
+  onAdjustImage?: (
+    originalBoundingBox: any,
+    newBoundingBox: any,
+    file?: File | Blob | null,
+    cropBox?: any,
+    pageNumber?: number
+  ) => Promise<void>;
   onActiveEditChange?: (isEditing: boolean) => void;
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
   pdfUrl,
+  pdfDoc: externalPdfDoc,
+  onPdfDocLoaded,
   currentPage,
   totalPages,
   pages,
@@ -507,13 +660,21 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   onCommitEdit,
   onDeleteImage,
   onReplaceImage,
+  onAdjustImage,
   onActiveEditChange,
 }) => {
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<any>(externalPdfDoc || null);
+
+  // Sync external pdfDoc
+  useEffect(() => {
+    if (externalPdfDoc) {
+      setPdfDoc(externalPdfDoc);
+    }
+  }, [externalPdfDoc]);
 
   // Active in-place editing state
   const [activeObj, setActiveObj] = useState<EditableText | null>(null);
@@ -521,11 +682,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [activeColor, setActiveColor] = useState<string>('');
   const [activeBgColor, setActiveBgColor] = useState<string>('#ffffff');
 
-  // Selected Image state
+  // Selected Image & Transformation State
   const [selectedImage, setSelectedImage] = useState<ImageObject | null>(null);
+  const [adjustmentState, setAdjustmentState] = useState<ImageAdjustmentState | null>(null);
+  const [activeSnapshotUrl, setActiveSnapshotUrl] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
 
-  // Load PDF Document
+  // Load PDF Document if not provided by parent
   useEffect(() => {
+    if (externalPdfDoc) return;
     let isCancelled = false;
     const loadDoc = async () => {
       try {
@@ -537,6 +702,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         const doc = await loadingTask.promise;
         if (!isCancelled) {
           setPdfDoc(doc);
+          onPdfDocLoaded?.(doc);
         }
       } catch (err) {
         console.error('Error loading PDF in PDF.js:', err);
@@ -547,7 +713,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [pdfUrl]);
+  }, [externalPdfDoc, pdfUrl, onPdfDocLoaded]);
 
   // Focus inline input on select
   useEffect(() => {
@@ -566,7 +732,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   }, [activeMatchKey]);
 
-  // Continuous Scroll: Track which page is in viewport and update currentPage in Toolbar (like Google Drive)
+  // Continuous Scroll: Track which page is in viewport and update currentPage in Toolbar
   const isProgrammaticScrollRef = useRef<boolean>(false);
   useEffect(() => {
     const viewport = document.getElementById('canvas-viewport');
@@ -618,6 +784,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setActiveColor(origHex);
     setActiveBgColor('#ffffff');
     onActiveEditChange?.(true);
+    setSelectedImage(null);
+    setAdjustmentState(null);
   };
 
   const handleCommit = async () => {
@@ -671,28 +839,180 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
-  // Image deletion & replacement
+  // Image Selection with Canvas Snapshot
+  const handleSelectImageWithSnapshot = (img: ImageObject, snapshotUrl: string | null) => {
+    setSelectedImage(img);
+    setActiveSnapshotUrl(snapshotUrl);
+    setAdjustmentState({
+      x: img.boundingBox.x,
+      y: img.boundingBox.y,
+      width: img.boundingBox.width,
+      height: img.boundingBox.height,
+      replacementFile: null,
+      previewUrl: null,
+      cropBox: null,
+      isModified: false,
+    });
+    setActiveObj(null);
+  };
+
+  // Interactive Drag & Resize Pointer Listener
+  const handlePointerDownImage = (
+    e: React.PointerEvent,
+    dragType: 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w'
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!adjustmentState) return;
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const initialBox = {
+      x: adjustmentState.x,
+      y: adjustmentState.y,
+      width: adjustmentState.width,
+      height: adjustmentState.height,
+    };
+
+    const handlePointerMove = (moveEvt: PointerEvent) => {
+      const deltaX = (moveEvt.clientX - startClientX) / scale;
+      const deltaY = (moveEvt.clientY - startClientY) / scale;
+
+      setAdjustmentState((prev) => {
+        if (!prev) return null;
+        let nextX = initialBox.x;
+        let nextY = initialBox.y;
+        let nextW = initialBox.width;
+        let nextH = initialBox.height;
+
+        if (dragType === 'move') {
+          nextX = Math.round((initialBox.x + deltaX) * 10) / 10;
+          nextY = Math.round((initialBox.y + deltaY) * 10) / 10;
+        } else {
+          if (dragType.includes('e')) {
+            nextW = Math.max(15, Math.round((initialBox.width + deltaX) * 10) / 10);
+          }
+          if (dragType.includes('s')) {
+            nextH = Math.max(15, Math.round((initialBox.height + deltaY) * 10) / 10);
+          }
+          if (dragType.includes('w')) {
+            const maxDelta = initialBox.width - 15;
+            const clamped = Math.min(maxDelta, deltaX);
+            nextX = Math.round((initialBox.x + clamped) * 10) / 10;
+            nextW = Math.round((initialBox.width - clamped) * 10) / 10;
+          }
+          if (dragType.includes('n')) {
+            const maxDelta = initialBox.height - 15;
+            const clamped = Math.min(maxDelta, deltaY);
+            nextY = Math.round((initialBox.y + clamped) * 10) / 10;
+            nextH = Math.round((initialBox.height - clamped) * 10) / 10;
+          }
+        }
+
+        return {
+          ...prev,
+          x: nextX,
+          y: nextY,
+          width: nextW,
+          height: nextH,
+          isModified: true,
+        };
+      });
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
+  const handleResetAdjustment = () => {
+    if (!selectedImage) return;
+    setAdjustmentState({
+      x: selectedImage.boundingBox.x,
+      y: selectedImage.boundingBox.y,
+      width: selectedImage.boundingBox.width,
+      height: selectedImage.boundingBox.height,
+      replacementFile: null,
+      previewUrl: null,
+      cropBox: null,
+      isModified: false,
+    });
+  };
+
+  const handleSaveAdjustment = async () => {
+    if (!selectedImage || !adjustmentState) return;
+    try {
+      const pageNum = selectedImage.pageNumber || currentPage;
+      if (onAdjustImage) {
+        await onAdjustImage(
+          selectedImage.boundingBox,
+          {
+            x: adjustmentState.x,
+            y: adjustmentState.y,
+            width: adjustmentState.width,
+            height: adjustmentState.height,
+          },
+          adjustmentState.replacementFile,
+          adjustmentState.cropBox,
+          pageNum
+        );
+      } else if (adjustmentState.replacementFile && onReplaceImage) {
+        await onReplaceImage(selectedImage.boundingBox, adjustmentState.replacementFile as File);
+      }
+      setSelectedImage(null);
+      setAdjustmentState(null);
+      setActiveSnapshotUrl(null);
+    } catch {
+      showToast('Failed to save logo changes. Please try again.', 'error');
+    }
+  };
+
+  const handleApplyCrop = (croppedBlob: Blob, cropBoxData: any) => {
+    const preview = URL.createObjectURL(croppedBlob);
+    setAdjustmentState((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        replacementFile: croppedBlob,
+        previewUrl: preview,
+        cropBox: cropBoxData,
+        isModified: true,
+      };
+    });
+    setIsCropModalOpen(false);
+  };
+
+  // Image deletion
   const handleDeleteSelectedImage = async () => {
     if (!selectedImage || !onDeleteImage) return;
     try {
       await onDeleteImage(selectedImage.boundingBox);
       setSelectedImage(null);
+      setAdjustmentState(null);
+      setActiveSnapshotUrl(null);
     } catch {
       showToast('Failed to delete image', 'error');
     }
   };
 
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedImage || !onReplaceImage) return;
-    try {
-      await onReplaceImage(selectedImage.boundingBox, file);
-      setSelectedImage(null);
-    } catch {
-      showToast('Failed to replace image', 'error');
-    } finally {
-      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
-    }
+    if (!file || !selectedImage) return;
+    const preview = URL.createObjectURL(file);
+    setAdjustmentState((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        replacementFile: file,
+        previewUrl: preview,
+        isModified: true,
+      };
+    });
+    if (imageFileInputRef.current) imageFileInputRef.current.value = '';
   };
 
   // Determine list of pages to render
@@ -733,6 +1053,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         onChange={handleImageFileChange}
       />
 
+      {/* Image Crop Modal */}
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        imageUrl={adjustmentState?.previewUrl || activeSnapshotUrl || ''}
+        onClose={() => setIsCropModalOpen(false)}
+        onApplyCrop={handleApplyCrop}
+      />
+
       {/* Main Continuous Document Viewport (Google Drive style continuous scrolling) */}
       <div
         className="canvas-viewport"
@@ -742,7 +1070,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             setActiveObj(null);
             onActiveEditChange?.(false);
           }
-          setSelectedImage(null);
+          if (!adjustmentState?.isModified) {
+            setSelectedImage(null);
+            setAdjustmentState(null);
+            setActiveSnapshotUrl(null);
+          }
         }}
       >
         {/* Top Activity Progress Bar */}
@@ -765,6 +1097,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               activeColor={activeColor}
               activeBgColor={activeBgColor}
               selectedImage={selectedImage}
+              adjustmentState={adjustmentState}
+              activeSnapshotUrl={activeSnapshotUrl}
               activeMatchKey={activeMatchKey || null}
               allSearchMatchIds={allSearchMatchIds}
               searchQuery={searchQuery}
@@ -773,12 +1107,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               onStartEdit={handleStartEdit}
               setActiveText={setActiveText}
               handleKeyDown={handleKeyDown}
-              onSelectImage={(img) => {
-                setSelectedImage(img);
-                setActiveObj(null);
-              }}
+              onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
+              onPointerDownImage={handlePointerDownImage}
+              onOpenCrop={() => setIsCropModalOpen(true)}
+              onResetAdjustment={handleResetAdjustment}
+              onSaveAdjustment={handleSaveAdjustment}
               onDeleteSelectedImage={handleDeleteSelectedImage}
-              onCloseSelectedImage={() => setSelectedImage(null)}
+              onCloseSelectedImage={() => {
+                setSelectedImage(null);
+                setAdjustmentState(null);
+                setActiveSnapshotUrl(null);
+              }}
             />
           ))}
         </div>
@@ -786,3 +1125,4 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     </div>
   );
 };
+

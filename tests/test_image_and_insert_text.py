@@ -90,3 +90,62 @@ def test_replace_image(wandercraft_session):
     res = service.replace_image(session_id, 1, bbox, new_bytes)
     assert res["success"] is True
     assert len(res["imageObjects"]) == 1
+
+
+def test_adjust_image_move_and_resize(wandercraft_session):
+    service, session_id, _ = wandercraft_session
+    analysis = service.analyze_session_page(session_id, 1)
+    orig_bbox = analysis["imageObjects"][0]["boundingBox"]
+
+    # Reposition and resize to new coordinates
+    new_bbox = {
+        "x": 100.0,
+        "y": 120.0,
+        "width": 180.0,
+        "height": 70.0
+    }
+
+    res = service.adjust_image(
+        session_id=session_id,
+        page_number=1,
+        original_bounding_box=orig_bbox,
+        new_bounding_box=new_bbox
+    )
+    assert res["success"] is True
+    assert len(res["imageObjects"]) == 1
+    updated_bbox = res["imageObjects"][0]["boundingBox"]
+    assert abs(updated_bbox["x"] - 100.0) < 2.0
+    assert abs(updated_bbox["y"] - 120.0) < 2.0
+    assert abs(updated_bbox["width"] - 180.0) < 2.0
+    assert abs(updated_bbox["height"] - 70.0) < 2.0
+
+
+def test_adjust_image_crop(wandercraft_session):
+    service, session_id, _ = wandercraft_session
+    analysis = service.analyze_session_page(session_id, 1)
+    orig_bbox = analysis["imageObjects"][0]["boundingBox"]
+
+    # Crop inner 50%
+    crop_box = {
+        "x": 0.25,
+        "y": 0.25,
+        "width": 0.5,
+        "height": 0.5
+    }
+    new_bbox = {
+        "x": orig_bbox["x"],
+        "y": orig_bbox["y"],
+        "width": orig_bbox["width"] / 2,
+        "height": orig_bbox["height"] / 2
+    }
+
+    res = service.adjust_image(
+        session_id=session_id,
+        page_number=1,
+        original_bounding_box=orig_bbox,
+        new_bounding_box=new_bbox,
+        crop_box=crop_box
+    )
+    assert res["success"] is True
+    assert len(res["imageObjects"]) == 1
+

@@ -56,6 +56,7 @@ export interface SessionInfo {
   filename: string;
   pageCount: number;
   pages: PageMeta[];
+  initialAnalysis?: AnalyzeResponse;
 }
 
 export interface ImageObject {
@@ -64,6 +65,7 @@ export interface ImageObject {
   boundingBox: BoundingBox;
   width?: number;
   height?: number;
+  pageNumber?: number;
 }
 
 export interface EditResult {

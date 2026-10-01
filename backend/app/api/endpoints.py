@@ -63,6 +63,10 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     try:
         session_info = service.create_session(file.filename, file_bytes)
+        try:
+            session_info["initialAnalysis"] = service.analyze_session_page(session_info["sessionId"], 1)
+        except Exception as e:
+            print(f"Initial page 1 analysis warning: {e}")
         return session_info
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
@@ -218,6 +222,42 @@ async def replace_image(
         raise HTTPException(status_code=404, detail="Session not found.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error replacing image: {e}")
+
+
+@router.post("/adjust-image")
+async def adjust_image(
+    sessionId: str = Form(...),
+    page: int = Form(1),
+    originalBoundingBox: str = Form(...),
+    newBoundingBox: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    cropBox: Optional[str] = Form(None)
+):
+    """Drag, resize, crop, or replace an image/logo on a page."""
+    try:
+        import json
+        orig_bbox = json.loads(originalBoundingBox)
+        new_bbox = json.loads(newBoundingBox)
+        crop_data = json.loads(cropBox) if cropBox else None
+        image_bytes = await file.read() if file else None
+
+        result = service.adjust_image(
+            session_id=sessionId,
+            page_number=page,
+            original_bounding_box=orig_bbox,
+            new_bounding_box=new_bbox,
+            image_bytes=image_bytes,
+            crop_box=crop_data
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error", "Adjust image failed"))
+        return result
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error adjusting image: {e}")
 
 
 @router.get("/download/{session_id}")

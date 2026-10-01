@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PageMeta } from '../types/pdf';
 
@@ -6,6 +7,7 @@ interface SidebarProps {
   pages: PageMeta[];
   currentPage: number;
   pdfUrl: string;
+  pdfDoc?: any;
   onPageSelect: (pageNumber: number) => void;
 }
 
@@ -17,13 +19,14 @@ const PageThumbnail: React.FC<{
 }> = React.memo(({ pdfDoc, pageNum, isActive, onClick }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
+  const [isThumbRendered, setIsThumbRendered] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current || !pdfDoc) return;
     let cancelled = false;
 
-    // Fast, staggered rendering sharing the single master document
-    const delay = Math.min((pageNum - 1) * 40, 400);
+    // Stagger initial render so page 1 renders immediately (0ms), followed quickly by subsequent pages
+    const delay = pageNum === 1 ? 0 : Math.min((pageNum - 1) * 35, 300);
     const timer = setTimeout(() => {
       const render = async () => {
         try {
@@ -31,23 +34,35 @@ const PageThumbnail: React.FC<{
           if (cancelled) return;
           const canvas = canvasRef.current;
           if (!canvas) return;
-          const baseScale = 0.85;
+
+          const baseScale = 0.45;
           const viewport = page.getViewport({ scale: baseScale });
-          const outputScale = window.devicePixelRatio || 1;
+          const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
           canvas.width = Math.floor(viewport.width * outputScale);
           canvas.height = Math.floor(viewport.height * outputScale);
           canvas.style.width = '100%';
           canvas.style.height = '100%';
+
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
           ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-          if (renderTaskRef.current) renderTaskRef.current.cancel();
-          await renderTaskRef.current.promise;
+
+          if (renderTaskRef.current) {
+            try {
+              renderTaskRef.current.cancel();
+            } catch {}
+          }
+
+          const renderTask = page.render({ canvasContext: ctx, viewport });
+          renderTaskRef.current = renderTask;
+          await renderTask.promise;
+
           if (!cancelled) {
             setIsThumbRendered(true);
           }
         } catch {
-          // cancelled or error
+          // Task cancelled or page error
         }
       };
       render();
@@ -56,11 +71,13 @@ const PageThumbnail: React.FC<{
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      if (renderTaskRef.current) renderTaskRef.current.cancel();
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
     };
   }, [pdfDoc, pageNum]);
-
-  const [isThumbRendered, setIsThumbRendered] = useState(false);
 
   return (
     <div
@@ -68,10 +85,19 @@ const PageThumbnail: React.FC<{
       onClick={onClick}
       id={`thumbnail-page-${pageNum}`}
     >
-      <div className="thumb-preview">
-        <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%', display: isThumbRendered ? 'block' : 'none' }} />
+      <div className="thumb-preview" style={{ position: 'relative', overflow: 'hidden' }}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            maxWidth: '100%',
+            maxHeight: '100%',
+            display: 'block',
+            opacity: isThumbRendered ? 1 : 0,
+            transition: 'opacity 0.2s ease',
+          }}
+        />
         {!isThumbRendered && (
-          <div className="thumb-skeleton">
+          <div className="thumb-skeleton" style={{ position: 'absolute', inset: 0 }}>
             <div className="skeleton-shimmer-wave" />
             <div className="thumb-skeleton-mock">
               <div className="skeleton-line" style={{ width: '45%', height: 6, marginBottom: 4 }} />
@@ -88,21 +114,32 @@ const PageThumbnail: React.FC<{
   );
 });
 
-export const Sidebar: React.FC<SidebarProps> = ({ pages, currentPage, pdfUrl, onPageSelect }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  pages,
+  currentPage,
+  pdfUrl,
+  pdfDoc: externalPdfDoc,
+  onPageSelect,
+}) => {
   const [collapsed, setCollapsed] = useState(false);
   const [sharedDoc, setSharedDoc] = useState<any>(null);
 
-  // Load PDF document ONCE at the sidebar level and share across all thumbnail workers
+  // If pdfDoc was passed from parent, use it directly (0 duplicate fetch).
+  // Otherwise, load once at sidebar level as fallback.
   useEffect(() => {
+    if (externalPdfDoc) {
+      setSharedDoc(externalPdfDoc);
+      return;
+    }
+
     if (!pdfUrl) {
       setSharedDoc(null);
       return;
     }
+
     let isCancelled = false;
     const loadSharedDoc = async () => {
       try {
-        const pdfjsLib = (window as any).pdfjsLib;
-        if (!pdfjsLib) return;
         const loadingTask = pdfjsLib.getDocument({ url: pdfUrl, disableStream: true });
         const doc = await loadingTask.promise;
         if (!isCancelled) {
@@ -116,7 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ pages, currentPage, pdfUrl, on
     return () => {
       isCancelled = true;
     };
-  }, [pdfUrl]);
+  }, [externalPdfDoc, pdfUrl]);
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
@@ -151,3 +188,4 @@ export const Sidebar: React.FC<SidebarProps> = ({ pages, currentPage, pdfUrl, on
     </aside>
   );
 };
+

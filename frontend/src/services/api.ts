@@ -207,3 +207,37 @@ export async function replacePdfImage(
   return res.json();
 }
 
+export async function adjustPdfImage(
+  sessionId: string,
+  page: number,
+  originalBoundingBox: any,
+  newBoundingBox: any,
+  file?: File | Blob | null,
+  cropBox?: any
+): Promise<EditResult> {
+  const formData = new FormData();
+  formData.append('sessionId', sessionId);
+  formData.append('page', page.toString());
+  formData.append('originalBoundingBox', JSON.stringify(originalBoundingBox));
+  formData.append('newBoundingBox', JSON.stringify(newBoundingBox));
+  if (file) {
+    formData.append('file', file);
+  }
+  if (cropBox) {
+    formData.append('cropBox', JSON.stringify(cropBox));
+  }
+
+  const res = await fetch(`${API_BASE}/adjust-image`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Adjust image failed' }));
+    throw new Error(err.detail || 'Failed to adjust image');
+  }
+
+  return res.json();
+}
+
+

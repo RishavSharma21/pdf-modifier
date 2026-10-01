@@ -7,13 +7,14 @@ import { PdfViewer } from './components/PdfViewer';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { useToast } from './components/Toast';
+import * as pdfjsLib from 'pdfjs-dist';
 import {
   uploadPdf,
   getSession,
   analyzePage,
   editPdfText,
   deletePdfImage,
-  replacePdfImage,
+  adjustPdfImage,
   undoPdfEdit,
   redoPdfEdit,
   getDownloadUrl,
@@ -23,6 +24,7 @@ import type { SessionInfo, EditableText, ImageObject } from './types/pdf';
 export function App() {
   const { showToast } = useToast();
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [sharedPdfDoc, setSharedPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.25);
   const [editableObjects, setEditableObjects] = useState<EditableText[]>([]);
@@ -449,14 +451,39 @@ export function App() {
     };
   }, [session, calculateOptimalScale]);
 
-  // Handle file selection
+  // Handle file selection with zero-latency instant client-side preview
   const handleFileSelected = async (file: File) => {
     try {
       setIsLoading(true);
+
+      // Instantly start reading local bytes into PDF.js in the background (0ms network delay!)
+      file.arrayBuffer().then(async (buf) => {
+        try {
+          const loadingTask = pdfjsLib.getDocument({
+            data: buf,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapPacked: true,
+          });
+          const doc = await loadingTask.promise;
+          setSharedPdfDoc(doc);
+        } catch (e) {
+          console.warn('Instant local PDF parse note:', e);
+        }
+      });
+
       const sessionInfo = await uploadPdf(file);
       setSession(sessionInfo);
       setCurrentPage(1);
       localStorage.setItem('pdf_active_session_id', sessionInfo.sessionId);
+
+      // Pre-populate page 1 analysis immediately if provided by backend upload (saves 1 sequential roundtrip!)
+      if (sessionInfo.initialAnalysis) {
+        const texts = sessionInfo.initialAnalysis.textObjects || [];
+        const images = sessionInfo.initialAnalysis.imageObjects || [];
+        pageAnalysisCache.current.set(1, { textObjects: texts, imageObjects: images });
+        setEditableObjects(texts);
+        setImageObjects(images);
+      }
 
       // Push history state so the browser back button returns to the home screen instead of exiting the site!
       window.history.pushState(
@@ -620,23 +647,41 @@ export function App() {
     }
   };
 
-  // Handle replacing an image/logo with a new file
-  const handleReplaceImage = async (boundingBox: any, file: File) => {
+  // Handle adjusting an image/logo (move, resize, crop, or replace)
+  const handleAdjustImage = async (
+    originalBoundingBox: any,
+    newBoundingBox: any,
+    file?: File | Blob | null,
+    cropBox?: any,
+    pageNumber?: number
+  ) => {
     if (!session) return;
+    const targetPage = pageNumber ?? currentPage;
     try {
       setIsProcessing(true);
-      const res = await replacePdfImage(session.sessionId, currentPage, boundingBox, file);
+      const res = await adjustPdfImage(
+        session.sessionId,
+        targetPage,
+        originalBoundingBox,
+        newBoundingBox,
+        file,
+        cropBox
+      );
+      pageAnalysisCache.current.delete(targetPage);
       if (res.textObjects) setEditableObjects(res.textObjects);
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
       setPdfRefreshKey((prev) => prev + 1);
+      showToast('Logo updated successfully!', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Failed to replace image', 'error');
+      showToast(err.message || 'Failed to adjust logo', 'error');
+      throw err;
     } finally {
       setIsProcessing(false);
     }
   };
+
 
   // Handle undo edit
   const handleUndo = async () => {
@@ -788,6 +833,7 @@ export function App() {
               pages={session.pages}
               currentPage={currentPage}
               pdfUrl={pdfUrl}
+              pdfDoc={sharedPdfDoc}
               onPageSelect={(p) => {
                 setCurrentPage(p);
                 const el = document.getElementById(`pdf-page-${p}`);
@@ -796,8 +842,10 @@ export function App() {
             />
 
             <PdfViewer
-              key={session.sessionId}
+              key={`${session.sessionId}-${pdfRefreshKey}`}
               pdfUrl={pdfUrl}
+              pdfDoc={sharedPdfDoc}
+              onPdfDocLoaded={(doc) => setSharedPdfDoc(doc)}
               currentPage={currentPage}
               totalPages={session.pageCount}
               pages={session.pages}
@@ -818,7 +866,8 @@ export function App() {
               }}
               onCommitEdit={handleCommitEdit}
               onDeleteImage={handleDeleteImage}
-              onReplaceImage={handleReplaceImage}
+              onReplaceImage={(bbox, file) => handleAdjustImage(bbox, bbox, file)}
+              onAdjustImage={handleAdjustImage}
               onActiveEditChange={setIsEditingActive}
             />
 

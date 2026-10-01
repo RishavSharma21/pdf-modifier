@@ -572,8 +572,10 @@ class PDFService:
                 oh = original_bounding_box.get("height", 0.0)
                 orig_rect = fitz.Rect(ox, oy, ox + ow, oy + oh)
 
+                extracted_from_page = False
                 # If no new image was provided, extract existing image from page
                 if not image_bytes:
+                    extracted_from_page = True
                     target_xref = None
                     for info in page.get_image_info(xrefs=True):
                         ibbox = info.get("bbox")
@@ -606,8 +608,10 @@ class PDFService:
                         pix = page.get_pixmap(clip=orig_rect, dpi=200)
                         image_bytes = pix.tobytes("png")
 
-                # Optional crop handling via PIL
-                if crop_box and image_bytes:
+                # Optional crop handling via PIL:
+                # Only apply backend crop if crop_box is provided AND image was extracted from page
+                # (client-provided image_bytes from ImageCropModal is already cropped)
+                if crop_box and image_bytes and extracted_from_page:
                     try:
                         import io
                         from PIL import Image as PILImage

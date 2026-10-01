@@ -223,13 +223,20 @@ export async function adjustPdfImage(
 ): Promise<EditResult> {
   const buildFormData = () => {
     const fd = new FormData();
-    fd.append('sessionId', sessionId);
-    fd.append('page', page.toString());
-    fd.append('boundingBox', JSON.stringify(originalBoundingBox));
-    fd.append('originalBoundingBox', JSON.stringify(originalBoundingBox));
-    fd.append('newBoundingBox', JSON.stringify(newBoundingBox));
+    fd.append('sessionId', sessionId || '');
+    fd.append('page', (page || 1).toString());
+    const origBoxStr = JSON.stringify(originalBoundingBox || {});
+    const newBoxStr = JSON.stringify(newBoundingBox || originalBoundingBox || {});
+    fd.append('boundingBox', origBoxStr);
+    fd.append('originalBoundingBox', origBoxStr);
+    fd.append('newBoundingBox', newBoxStr);
+
     if (file) {
-      fd.append('file', file instanceof File ? file : new File([file], 'replacement.png', { type: 'image/png' }));
+      if (file instanceof File) {
+        fd.append('file', file);
+      } else if (file instanceof Blob) {
+        fd.append('file', file, 'replacement.png');
+      }
     }
     if (cropBox) {
       fd.append('cropBox', JSON.stringify(cropBox));
@@ -238,13 +245,21 @@ export async function adjustPdfImage(
   };
 
   const extractDetail = (body: any): string => {
-    if (!body || !body.detail) return 'Adjust image failed';
+    if (!body) return 'Adjust image failed';
     if (typeof body.detail === 'string') return body.detail;
     if (Array.isArray(body.detail)) {
-      // Pydantic v2 validation error — join readable messages
-      return body.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ');
+      // Pydantic v2 validation error — format clearly with field names
+      return body.detail
+        .map((d: any) => {
+          const loc = Array.isArray(d.loc)
+            ? d.loc.filter((x: any) => x !== 'body').join('.')
+            : '';
+          return loc ? `${loc}: ${d.msg || 'invalid'}` : (d.msg || JSON.stringify(d));
+        })
+        .join('; ');
     }
-    return JSON.stringify(body.detail);
+    if (body.error && typeof body.error === 'string') return body.error;
+    return JSON.stringify(body.detail || body);
   };
 
   let res = await fetch(`${API_BASE}/adjust-image`, {

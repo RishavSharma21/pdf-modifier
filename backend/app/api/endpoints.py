@@ -196,23 +196,43 @@ async def delete_image(req: DeleteImageRequest):
 
 
 @router.post("/replace-image")
-async def replace_image(
-    sessionId: str = Form(...),
+@router.post("/adjust-image")
+async def adjust_or_replace_image(
+    sessionId: Optional[str] = Form(None),
     page: int = Form(1),
-    boundingBox: str = Form(...),
-    newBoundingBox: Optional[str] = Form(None),
+    boundingBox: Optional[str] = Form(None),
     originalBoundingBox: Optional[str] = Form(None),
+    newBoundingBox: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     cropBox: Optional[str] = Form(None)
 ):
     """Replace, move, resize, or crop an image at bounding box."""
+    if not sessionId:
+        raise HTTPException(status_code=400, detail="Missing required field: sessionId")
+
+    raw_orig = originalBoundingBox or boundingBox
+    if not raw_orig or raw_orig in ("undefined", "null", "{}"):
+        raise HTTPException(status_code=400, detail="Missing required field: boundingBox")
+
     try:
         import json
-        raw_orig = originalBoundingBox or boundingBox
-        orig_bbox = json.loads(raw_orig)
-        target_bbox = json.loads(newBoundingBox) if newBoundingBox else orig_bbox
-        crop_data = json.loads(cropBox) if cropBox else None
-        image_bytes = await file.read() if file else None
+        orig_bbox = json.loads(raw_orig) if isinstance(raw_orig, str) else raw_orig
+        target_bbox = orig_bbox
+        if newBoundingBox and newBoundingBox not in ("undefined", "null"):
+            target_bbox = json.loads(newBoundingBox) if isinstance(newBoundingBox, str) else newBoundingBox
+
+        crop_data = None
+        if cropBox and cropBox not in ("undefined", "null"):
+            crop_data = json.loads(cropBox) if isinstance(cropBox, str) else cropBox
+
+        image_bytes = None
+        if file:
+            try:
+                image_bytes = await file.read()
+                if len(image_bytes) == 0:
+                    image_bytes = None
+            except Exception:
+                image_bytes = None
 
         result = service.adjust_image(
             session_id=sessionId,
@@ -232,27 +252,6 @@ async def replace_image(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error replacing/adjusting image: {e}")
 
-
-@router.post("/adjust-image")
-async def adjust_image(
-    sessionId: str = Form(...),
-    page: int = Form(1),
-    originalBoundingBox: Optional[str] = Form(None),
-    boundingBox: Optional[str] = Form(None),
-    newBoundingBox: Optional[str] = Form(None),
-    file: Optional[UploadFile] = File(None),
-    cropBox: Optional[str] = Form(None)
-):
-    """Drag, resize, crop, or replace an image/logo on a page."""
-    return await replace_image(
-        sessionId=sessionId,
-        page=page,
-        boundingBox=boundingBox or originalBoundingBox or "{}",
-        newBoundingBox=newBoundingBox,
-        originalBoundingBox=originalBoundingBox,
-        file=file,
-        cropBox=cropBox
-    )
 
 
 

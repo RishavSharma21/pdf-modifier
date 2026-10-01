@@ -8,7 +8,7 @@ Most PDF editors either slap a white box over existing text or convert the whole
 
 ---
 
-### What it can do:
+### What it does:
 
 - **Edit text directly**: Click any text and edit it in-place. Original typography and styling are preserved.
 - **Continuous multi-page view**: Smooth, continuous document scrolling (just like Google Drive).
@@ -17,22 +17,3 @@ Most PDF editors either slap a white box over existing text or convert the whole
 - **Insert new text**: Add custom text runs anywhere with font, size, and color controls.
 - **Full History**: Unlimited Undo / Redo for every change.
 - **Private & Local**: Files are processed on your own machine—no external cloud dependencies.
-
----
-
-### Quick Start
-
-**1. Start the backend:**
-```bash
-pip install -r requirements.txt
-uvicorn backend.app.main:app --reload
-```
-
-**2. Start the frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173` and start editing.

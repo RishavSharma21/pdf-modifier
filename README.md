@@ -1,95 +1,38 @@
 # PDF Modifier
 
-A high-fidelity PDF editing suite that performs **surgical in-place vector modification** on existing PDF documents without rasterization, destructive Word round-tripping, or whiteout overlay hacks.
+Need to edit a PDF without ruining its formatting? Here it is.
+
+Most PDF editors either slap a white box over existing text or convert the whole document to Word and back, breaking your fonts, alignments, and vector graphics. 
+
+**PDF Modifier** does true in-place surgical editing directly inside the PDF stream. Your original fonts, kerning, tables, and layouts stay completely intact.
 
 ---
 
-## ✨ Features
+### What it can do:
 
-- **Surgical Text Editing**: Direct PDF content stream editing that preserves original fonts, kerning, and vector layouts.
-- **Continuous Multi-Page Viewer**: Smooth, Google Drive-style continuous scrolling powered by PDF.js with real-time text selection overlays.
-- **In-Place WYSIWYG Controls**: Edit text directly on canvas with contextual font color picking, text deletion, and instant commit.
-- **Global Find & Replace**: Search keywords across all pages with occurrence counter and one-click batch replace.
-- **Image Operations**: Select, delete, or replace images and logos embedded in the PDF.
-- **Text Insertion**: Add new text anywhere on the page with customizable font family, size, and color.
-- **Undo / Redo History**: Full revision stack with instant state restoration.
-- **Mobile Responsive & Dark Mode**: Ergonomic interface designed for both desktop workstations and mobile devices.
-
----
-
-## 🛠️ Tech Stack
-
-- **Backend**: Python 3.11, FastAPI, PyMuPDF (fitz), PikePDF (QPDF engine)
-- **Frontend**: React 19, TypeScript, Vite, PDF.js, Lucide Icons
-- **Testing**: Pytest with automated regression and layout validation suites
+- **Edit text directly**: Click any text and edit it in-place. Original typography and styling are preserved.
+- **Continuous multi-page view**: Smooth, continuous document scrolling (just like Google Drive).
+- **Find & Replace**: Search keywords across the entire document and replace them in one go.
+- **Images & Logos**: Select, swap, or remove images embedded in the document.
+- **Insert new text**: Add custom text runs anywhere with font, size, and color controls.
+- **Full History**: Unlimited Undo / Redo for every change.
+- **Private & Local**: Files are processed on your own machine—no external cloud dependencies.
 
 ---
 
-## 🚀 Quick Start
+### Quick Start
 
-### 1. Backend Setup
-
+**1. Start the backend:**
 ```bash
-# Navigate to repository root
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt  # Or: pip install fastapi uvicorn pymupdf pikepdf
-
-# Start FastAPI server
-uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+pip install -r requirements.txt
+uvicorn backend.app.main:app --reload
 ```
 
-The API will be live at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
-
-### 2. Frontend Setup
-
+**2. Start the frontend:**
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start Vite dev server
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
-
----
-
-## 🧪 Testing
-
-Run the full automated test suite (23 integration tests):
-
-```bash
-pytest
-```
-
----
-
-## 📁 Project Structure
-
-```
-PDFModifier/
-├── backend/                  # FastAPI REST API & session services
-│   └── app/
-│       ├── api/endpoints.py  # Upload, analyze, modify, undo/redo routes
-│       └── services/         # PDF session state management
-├── core/                     # Surgical PDF modification engine
-│   ├── modification/         # Stream rewriting & in-place replacement
-│   ├── pdf/                  # Page layout analyzer & stream lexer
-│   └── validation/           # Dual-parser integrity verification
-├── frontend/                 # React + TypeScript frontend
-│   └── src/
-│       ├── components/       # PdfViewer, Dropzone, Toolbar, FindReplace
-│       └── services/api.ts   # Backend API client
-└── tests/                    # Automated regression test suite
-```
-
----
-
-## 📄 License
-
-MIT
+Open `http://localhost:5173` and start editing.

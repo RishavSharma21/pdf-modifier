@@ -39,6 +39,7 @@ export interface EditableText {
   boundingBox: BoundingBox;
   font: FontInfo;
   rotation: number;
+  origin?: [number, number];
   sourceObjectId?: string;
   runs: TextRun[];
 }
@@ -57,11 +58,29 @@ export interface SessionInfo {
   pages: PageMeta[];
 }
 
+export interface ImageObject {
+  id: string;
+  xref?: number;
+  boundingBox: BoundingBox;
+  width?: number;
+  height?: number;
+}
+
 export interface EditResult {
   success: boolean;
   strategy: "ORIGINAL_FONT_REUSED" | "ORIGINAL_FONT_PATCHED" | "FONT_SUBSTITUTED" | "UNSUPPORTED";
   details: string;
   metricsDeltaWidth: number;
   newBoundingBox?: BoundingBox;
+  textObjects?: EditableText[];
+  imageObjects?: ImageObject[];
   error?: string;
 }
+
+export interface AnalyzeResponse {
+  page: number;
+  fonts: Record<string, any>;
+  textObjects: EditableText[];
+  imageObjects?: ImageObject[];
+}
+

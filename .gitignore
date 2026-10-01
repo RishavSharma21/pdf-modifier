@@ -1,9 +1,39 @@
+# Python virtual environment & cache
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
 *.egg-info/
 dist/
 build/
-experiments/diffs/
-experiments/*.png
+
+# Operating system & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+.env
+.env.local
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# Runtime and experiment session data
+experiments/*
+!experiments/sessions/
+experiments/sessions/*
+!experiments/sessions/.gitkeep
+
+# Test output artifacts
+test-pdfs/temp_*.pdf
+test-pdfs/*_out*.pdf
+test-pdfs/test_*.pdf
+test-pdfs/*.png
+
+# Debug image dumps
+*.png

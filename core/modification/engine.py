@@ -21,15 +21,21 @@ class PDFModificationEngine:
         output_pdf_path: str,
         search_text: str,
         replacement_text: str,
-        page_number: int = 1
+        page_number: int = 1,
+        color: Optional[Tuple[float, float, float]] = None,
+        target_text_id: Optional[str] = None,
+        bounding_box: Optional[BoundingBox] = None,
+        origin: Optional[Tuple[float, float]] = None,
     ) -> ModificationResult:
         """Find a target text run on the specified page and replace it in the content stream."""
         if not os.path.exists(input_pdf_path):
             op = EditOperation(
                 page_number=page_number,
-                target_text_id="unknown",
+                target_text_id=target_text_id or "unknown",
                 original_text=search_text,
-                new_text=replacement_text
+                new_text=replacement_text,
+                original_bounding_box=bounding_box,
+                origin=origin,
             )
             return ModificationResult(
                 success=False,
@@ -45,9 +51,11 @@ class PDFModificationEngine:
         except Exception as e:
             op = EditOperation(
                 page_number=page_number,
-                target_text_id="unknown",
+                target_text_id=target_text_id or "unknown",
                 original_text=search_text,
-                new_text=replacement_text
+                new_text=replacement_text,
+                original_bounding_box=bounding_box,
+                origin=origin,
             )
             return ModificationResult(
                 success=False,
@@ -57,22 +65,57 @@ class PDFModificationEngine:
             )
 
         matched_obj: Optional[EditableText] = None
-        for obj in page_objects:
-            if search_text in obj.text:
-                matched_obj = obj
-                break
 
-        target_id = matched_obj.id if matched_obj else "unknown"
-        target_bbox = matched_obj.bounding_box if matched_obj else None
+        # Priority 1: Match by exact target_text_id
+        if target_text_id:
+            for obj in page_objects:
+                if obj.id == target_text_id:
+                    matched_obj = obj
+                    break
+
+        # Priority 2: Match by nearest bounding box if provided
+        if not matched_obj and bounding_box:
+            best_dist = float("inf")
+            for obj in page_objects:
+                dist = (obj.bounding_box.x - bounding_box.x)**2 + (obj.bounding_box.y - bounding_box.y)**2
+                if dist < best_dist and dist < 400:  # within ~20 points
+                    best_dist = dist
+                    matched_obj = obj
+
+        # Priority 3: Fallback substring search
+        if not matched_obj:
+            for obj in page_objects:
+                if search_text in obj.text or obj.text in search_text:
+                    matched_obj = obj
+                    break
+
+        target_id = target_text_id or (matched_obj.id if matched_obj else "unknown")
+        target_bbox = bounding_box or (matched_obj.bounding_box if matched_obj else None)
         target_font = matched_obj.font if matched_obj else None
+        target_origin = origin or (matched_obj.origin if matched_obj else None)
+        target_runs = matched_obj.runs if matched_obj else None
+
+        if color is not None and target_font is not None:
+            target_font.color = color
+
+        # If search_text is a substring of the matched line, preserve the full line context
+        if matched_obj and search_text in matched_obj.text and search_text != matched_obj.text:
+            orig_text_to_use = matched_obj.text
+            new_text_to_use = matched_obj.text.replace(search_text, replacement_text, 1)
+        else:
+            orig_text_to_use = search_text
+            new_text_to_use = replacement_text
 
         operation = EditOperation(
             page_number=page_number,
             target_text_id=target_id,
-            original_text=search_text,
-            new_text=replacement_text,
+            original_text=orig_text_to_use,
+            new_text=new_text_to_use,
             original_bounding_box=target_bbox,
             original_font=target_font,
+            origin=target_origin,
+            original_runs=target_runs,
         )
 
         return self.strategy.apply_edit(input_pdf_path, output_pdf_path, operation)
+

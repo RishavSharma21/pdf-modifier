@@ -116,6 +116,7 @@ class EditableText:
     source_object_id: Optional[str] = None
     source_content_stream: Optional[str] = None
     rotation: float = 0.0
+    origin: Optional[Tuple[float, float]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -125,6 +126,8 @@ class EditableText:
             "boundingBox": self.bounding_box.to_dict(),
             "font": self.font.to_dict(),
             "rotation": self.rotation,
+            "origin": [round(self.origin[0], 2), round(self.origin[1], 2)] if self.origin else None,
             "sourceObjectId": self.source_object_id,
             "runs": [r.to_dict() for r in self.runs],
         }
+

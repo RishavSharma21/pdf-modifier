@@ -66,3 +66,26 @@ def test_modify_preserves_unrelated_content(test_files):
     )
     assert report.is_valid is True
     assert report.unrelated_text_preserved is True
+
+
+def test_delete_text_line_removes_text_cleanly(test_files):
+    src, dest = test_files
+    engine = PDFModificationEngine()
+
+    result = engine.modify_text(
+        input_pdf_path=src,
+        output_pdf_path=dest,
+        search_text="Rishav",
+        replacement_text="",
+        page_number=1
+    )
+
+    assert result.success is True
+    assert os.path.exists(dest)
+
+    # Validate output that 'Rishav' is no longer present in page text
+    import fitz
+    doc = fitz.open(dest)
+    page_text = doc[0].get_text()
+    doc.close()
+    assert "Rishav" not in page_text

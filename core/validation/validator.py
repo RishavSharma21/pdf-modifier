@@ -98,8 +98,12 @@ class PDFValidator:
             mod_page = mod_doc[target_page_num - 1]
             mod_text = mod_page.get_text()
 
+            # Normalize whitespace and soft hyphens for robust text matching
+            norm_mod_text = mod_text.replace('\xa0', ' ').replace('\xad', '')
+            norm_expected = expected_text.replace('\xa0', ' ').replace('\xad', '')
+
             # Verify new text is in the document
-            if expected_text in mod_text:
+            if norm_expected in norm_mod_text:
                 report.expected_text_found = True
             else:
                 report.errors.append(f"Expected replacement text '{expected_text}' not found on page {target_page_num}")
@@ -108,11 +112,12 @@ class PDFValidator:
             # Check if unrelated text was preserved
             if orig_doc and 0 <= target_page_num - 1 < len(orig_doc):
                 orig_page = orig_doc[target_page_num - 1]
-                orig_words = [w[4] for w in orig_page.get_text("words")]
+                orig_words = [w[4].replace('\xa0', ' ').replace('\xad', '') for w in orig_page.get_text("words")]
                 # Filter out the original modified word(s)
-                unrelated_words = [w for w in orig_words if original_text and w not in original_text]
+                norm_orig_text = (original_text or "").replace('\xa0', ' ').replace('\xad', '')
+                unrelated_words = [w for w in orig_words if norm_orig_text and w not in norm_orig_text]
                 for w in unrelated_words[:10]:  # sample check
-                    if w not in mod_text:
+                    if w not in norm_mod_text:
                         report.warnings.append(f"Unrelated word '{w}' appears missing in modified text")
 
         if orig_doc:

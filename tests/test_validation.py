@@ -5,10 +5,19 @@ from core.validation.visual_diff import VisualRegressionTester
 
 
 @pytest.fixture
-def pdf_paths():
+def pdf_paths(tmp_path):
     base = os.path.dirname(os.path.dirname(__file__))
     orig = os.path.join(base, "test-pdfs", "standard_font.pdf")
-    mod = os.path.join(base, "experiments", "modified_standard.pdf")
+    mod = os.path.join(str(tmp_path), "modified_standard.pdf")
+    from core.modification.engine import PDFModificationEngine
+    engine = PDFModificationEngine()
+    engine.modify_text(
+        input_pdf_path=orig,
+        output_pdf_path=mod,
+        search_text="Rishav",
+        replacement_text="Rishav Sharma",
+        page_number=1
+    )
     return orig, mod
 
 

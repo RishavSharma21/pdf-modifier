@@ -23,6 +23,8 @@ class EditOperation:
     original_bounding_box: Optional[BoundingBox] = None
     original_font: Optional[FontInfo] = None
     target_run_id: Optional[str] = None
+    origin: Optional[Tuple[float, float]] = None
+    original_runs: Optional[List[Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -33,6 +35,8 @@ class EditOperation:
             "originalBoundingBox": self.original_bounding_box.to_dict() if self.original_bounding_box else None,
             "originalFont": self.original_font.to_dict() if self.original_font else None,
             "targetRunId": self.target_run_id,
+            "origin": [round(self.origin[0], 2), round(self.origin[1], 2)] if self.origin else None,
+            "originalRuns": [r.to_dict() for r in self.original_runs] if self.original_runs else None,
         }
 
 

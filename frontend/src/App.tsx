@@ -612,7 +612,7 @@ export function App() {
 
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
-      // Increment refresh key to reload PDF canvas in background
+      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
       setPdfRefreshKey((prev) => prev + 1);
     } catch (err: any) {
       showToast(err.message || 'Failed to edit text', 'error');
@@ -639,6 +639,7 @@ export function App() {
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
+      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
       setPdfRefreshKey((prev) => prev + 1);
     } catch (err: any) {
       showToast(err.message || 'Failed to delete image', 'error');
@@ -672,6 +673,7 @@ export function App() {
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
+      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
       setPdfRefreshKey((prev) => prev + 1);
       showToast('Logo updated successfully!', 'success');
     } catch (err: any) {
@@ -692,6 +694,7 @@ export function App() {
       if (res.success) {
         setEditCount((prev) => Math.max(0, prev - 1));
         setRedoCount((prev) => prev + 1);
+        setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
         setPdfRefreshKey((prev) => prev + 1);
         // Re-fetch page analysis so editableObjects reflects the reverted state
         // This also keeps Find & Replace search index in sync after undo
@@ -717,6 +720,7 @@ export function App() {
       if (res.success) {
         setEditCount((prev) => prev + 1);
         setRedoCount((prev) => Math.max(0, prev - 1));
+        setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
         setPdfRefreshKey((prev) => prev + 1);
         // Re-fetch page analysis so editableObjects reflects the re-applied state
         try {

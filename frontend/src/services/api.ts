@@ -1,6 +1,10 @@
 import type { SessionInfo, EditResult, AnalyzeResponse } from '../types/pdf';
 
-const getApiBase = (): string => {
+export const getApiBase = (): string => {
+  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    return `${envUrl.trim().replace(/\/+$/, '')}/api/pdf`;
+  }
   if (typeof window !== 'undefined' && window.location.hostname) {
     return `http://${window.location.hostname}:8000/api/pdf`;
   }

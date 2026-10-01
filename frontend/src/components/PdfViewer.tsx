@@ -262,10 +262,27 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         }}
       />
 
-      {/* Lightweight paper placeholder while scrolling quickly before canvas paints */}
+      {/* Rich document skeleton with animated shimmer wave while page is loading */}
       {!isRendered && (
         <div className="page-paper-placeholder">
-          <div className="placeholder-shimmer-subtle" />
+          <div className="skeleton-shimmer-wave" />
+          <div className="skeleton-content-mock">
+            <div className="skeleton-line skeleton-title" style={{ width: '42%' }} />
+            <div className="skeleton-line skeleton-subtitle" style={{ width: '65%' }} />
+            <div className="skeleton-gap" />
+            <div className="skeleton-line skeleton-p1" />
+            <div className="skeleton-line skeleton-p2" />
+            <div className="skeleton-line skeleton-p3" />
+            <div className="skeleton-gap" />
+            <div className="skeleton-line skeleton-p2" />
+            <div className="skeleton-line skeleton-p1" />
+            <div className="skeleton-gap" />
+            <div className="skeleton-line skeleton-p3" />
+            <div className="skeleton-line skeleton-p2" />
+            <div className="skeleton-gap" />
+            <div className="skeleton-line skeleton-p1" />
+            <div className="skeleton-line skeleton-p3" />
+          </div>
           <div className="placeholder-page-label">Page {pageNum}</div>
         </div>
       )}

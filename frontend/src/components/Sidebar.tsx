@@ -42,8 +42,10 @@ const PageThumbnail: React.FC<{
           if (!ctx) return;
           ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
           if (renderTaskRef.current) renderTaskRef.current.cancel();
-          renderTaskRef.current = page.render({ canvasContext: ctx, viewport });
           await renderTaskRef.current.promise;
+          if (!cancelled) {
+            setIsThumbRendered(true);
+          }
         } catch {
           // cancelled or error
         }
@@ -58,6 +60,8 @@ const PageThumbnail: React.FC<{
     };
   }, [pdfDoc, pageNum]);
 
+  const [isThumbRendered, setIsThumbRendered] = useState(false);
+
   return (
     <div
       className={`thumbnail-item ${isActive ? 'active' : ''}`}
@@ -65,7 +69,19 @@ const PageThumbnail: React.FC<{
       id={`thumbnail-page-${pageNum}`}
     >
       <div className="thumb-preview">
-        <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
+        <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%', display: isThumbRendered ? 'block' : 'none' }} />
+        {!isThumbRendered && (
+          <div className="thumb-skeleton">
+            <div className="skeleton-shimmer-wave" />
+            <div className="thumb-skeleton-mock">
+              <div className="skeleton-line" style={{ width: '45%', height: 6, marginBottom: 4 }} />
+              <div className="skeleton-line" style={{ width: '90%', height: 4 }} />
+              <div className="skeleton-line" style={{ width: '75%', height: 4 }} />
+              <div className="skeleton-line" style={{ width: '85%', height: 4 }} />
+              <div className="skeleton-line" style={{ width: '60%', height: 4 }} />
+            </div>
+          </div>
+        )}
       </div>
       <div className="thumb-label">Page {pageNum}</div>
     </div>

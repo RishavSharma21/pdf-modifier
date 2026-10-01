@@ -827,33 +827,55 @@ body {
 
 /* Lightweight paper placeholder while scrolling quickly before canvas paints */
 .page-paper-placeholder {
-  width: 100%;
-  height: 100%;
-  background: #ffffff;
-  position: relative;
-  overflow: hidden;
-  border-radius: 3px;
-}
-
-.placeholder-shimmer-subtle {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.03) 50%, transparent 100%);
-  animation: shimmerWave 1.8s infinite;
+  background: var(--surface-1);
+  overflow: hidden;
+  border-radius: 4px;
+  z-index: 3;
+  padding: clamp(24px, 5%, 48px) clamp(20px, 5%, 44px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .placeholder-page-label {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 13px;
-  font-weight: 500;
+  bottom: 16px;
+  right: 20px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-3);
-  opacity: 0.45;
-  letter-spacing: 0.04em;
+  opacity: 0.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   pointer-events: none;
 }
+
+/* Sidebar Thumbnail Skeleton */
+.thumb-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.thumb-skeleton {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-1);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.thumb-skeleton-mock {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
 
 /* ---------------------------------------------------------------------------
    REALISTIC 3D BOOK PAGE FOLDING TRANSITION STAGE

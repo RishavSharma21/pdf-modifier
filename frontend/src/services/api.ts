@@ -221,34 +221,48 @@ export async function adjustPdfImage(
   file?: File | Blob | null,
   cropBox?: any
 ): Promise<EditResult> {
-  const formData = new FormData();
-  formData.append('sessionId', sessionId);
-  formData.append('page', page.toString());
-  formData.append('boundingBox', JSON.stringify(originalBoundingBox));
-  formData.append('originalBoundingBox', JSON.stringify(originalBoundingBox));
-  formData.append('newBoundingBox', JSON.stringify(newBoundingBox));
-  if (file) {
-    formData.append('file', file);
-  }
-  if (cropBox) {
-    formData.append('cropBox', JSON.stringify(cropBox));
-  }
+  const buildFormData = () => {
+    const fd = new FormData();
+    fd.append('sessionId', sessionId);
+    fd.append('page', page.toString());
+    fd.append('boundingBox', JSON.stringify(originalBoundingBox));
+    fd.append('originalBoundingBox', JSON.stringify(originalBoundingBox));
+    fd.append('newBoundingBox', JSON.stringify(newBoundingBox));
+    if (file) {
+      fd.append('file', file instanceof File ? file : new File([file], 'replacement.png', { type: 'image/png' }));
+    }
+    if (cropBox) {
+      fd.append('cropBox', JSON.stringify(cropBox));
+    }
+    return fd;
+  };
+
+  const extractDetail = (body: any): string => {
+    if (!body || !body.detail) return 'Adjust image failed';
+    if (typeof body.detail === 'string') return body.detail;
+    if (Array.isArray(body.detail)) {
+      // Pydantic v2 validation error — join readable messages
+      return body.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ');
+    }
+    return JSON.stringify(body.detail);
+  };
 
   let res = await fetch(`${API_BASE}/adjust-image`, {
     method: 'POST',
-    body: formData,
+    body: buildFormData(),
   });
 
   if (res.status === 404) {
+    // /adjust-image not available on this deployment — try /replace-image
     res = await fetch(`${API_BASE}/replace-image`, {
       method: 'POST',
-      body: formData,
+      body: buildFormData(), // fresh FormData — don't reuse consumed stream
     });
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Adjust image failed' }));
-    throw new Error(err.detail || 'Failed to adjust image');
+    const body = await res.json().catch(() => ({ detail: 'Adjust image failed' }));
+    throw new Error(extractDetail(body));
   }
 
   return res.json();

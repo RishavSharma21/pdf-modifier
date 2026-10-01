@@ -677,8 +677,9 @@ export function App() {
       setPdfRefreshKey((prev) => prev + 1);
       showToast('Logo updated successfully!', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Failed to adjust logo', 'error');
-      throw err;
+      const msg = (typeof err?.message === 'string' ? err.message : null) || 'Failed to adjust logo';
+      showToast(msg, 'error');
+      // Don't re-throw — PdfViewer's catch block would show a second "Failed to save" toast
     } finally {
       setIsProcessing(false);
     }

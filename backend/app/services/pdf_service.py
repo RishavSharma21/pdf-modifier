@@ -562,113 +562,142 @@ class PDFService:
         temp_output_path = os.path.join(session_folder, "next.pdf")
 
         doc = fitz.open(current_path)
-        page_idx = page_number - 1
-        if 0 <= page_idx < len(doc):
-            page = doc[page_idx]
-            ox = original_bounding_box.get("x", 0.0)
-            oy = original_bounding_box.get("y", 0.0)
-            ow = original_bounding_box.get("width", 0.0)
-            oh = original_bounding_box.get("height", 0.0)
-            orig_rect = fitz.Rect(ox, oy, ox + ow, oy + oh)
+        try:
+            page_idx = page_number - 1
+            if 0 <= page_idx < len(doc):
+                page = doc[page_idx]
+                ox = original_bounding_box.get("x", 0.0)
+                oy = original_bounding_box.get("y", 0.0)
+                ow = original_bounding_box.get("width", 0.0)
+                oh = original_bounding_box.get("height", 0.0)
+                orig_rect = fitz.Rect(ox, oy, ox + ow, oy + oh)
 
-            # If no new image was provided, extract existing image from page
-            if not image_bytes:
-                target_xref = None
-                for info in page.get_image_info(xrefs=True):
-                    ibbox = info.get("bbox")
-                    if ibbox:
-                        ir = fitz.Rect(ibbox)
-                        if ir.intersects(orig_rect) or (abs(ir.x0 - orig_rect.x0) < 5 and abs(ir.y0 - orig_rect.y0) < 5):
-                            target_xref = info.get("xref")
-                            break
-
-                if target_xref and target_xref > 0:
-                    try:
-                        extracted = doc.extract_image(target_xref)
-                        if extracted and "image" in extracted:
-                            image_bytes = extracted["image"]
-                    except Exception as e:
-                        print(f"Error extracting image xref {target_xref}: {e}")
-
+                # If no new image was provided, extract existing image from page
                 if not image_bytes:
-                    # Fallback to high-dpi render of the original rect
-                    pix = page.get_pixmap(clip=orig_rect, dpi=200)
-                    image_bytes = pix.tobytes("png")
+                    target_xref = None
+                    for info in page.get_image_info(xrefs=True):
+                        ibbox = info.get("bbox")
+                        if ibbox:
+                            ir = fitz.Rect(ibbox)
+                            if ir.intersects(orig_rect) or (abs(ir.x0 - orig_rect.x0) < 5 and abs(ir.y0 - orig_rect.y0) < 5):
+                                target_xref = info.get("xref")
+                                break
 
-            # Optional crop handling via PIL
-            if crop_box and image_bytes:
+                    if target_xref and target_xref > 0:
+                        try:
+                            extracted = doc.extract_image(target_xref)
+                            if extracted and "image" in extracted:
+                                raw = extracted["image"]
+                                # Normalise to PNG so insert_image handles it reliably
+                                try:
+                                    import io
+                                    from PIL import Image as PILImage
+                                    pil_img = PILImage.open(io.BytesIO(raw))
+                                    buf = io.BytesIO()
+                                    pil_img.save(buf, format="PNG")
+                                    image_bytes = buf.getvalue()
+                                except Exception:
+                                    image_bytes = raw  # Use raw bytes as fallback
+                        except Exception as e:
+                            print(f"Error extracting image xref {target_xref}: {e}")
+
+                    if not image_bytes:
+                        # Fallback: render the original rect at high DPI
+                        pix = page.get_pixmap(clip=orig_rect, dpi=200)
+                        image_bytes = pix.tobytes("png")
+
+                # Optional crop handling via PIL
+                if crop_box and image_bytes:
+                    try:
+                        import io
+                        from PIL import Image as PILImage
+                        im = PILImage.open(io.BytesIO(image_bytes))
+                        im_w, im_h = im.size
+                        cx = crop_box.get("x", 0.0)
+                        cy = crop_box.get("y", 0.0)
+                        cw = crop_box.get("width", 1.0)
+                        ch = crop_box.get("height", 1.0)
+
+                        # Normalised coordinates (0.0 to 1.0)
+                        if cx <= 1.0 and cy <= 1.0 and cw <= 1.0 and ch <= 1.0:
+                            left = max(0, int(cx * im_w))
+                            top = max(0, int(cy * im_h))
+                            right = min(im_w, int((cx + cw) * im_w))
+                            bottom = min(im_h, int((cy + ch) * im_h))
+                        else:
+                            left = max(0, int(cx))
+                            top = max(0, int(cy))
+                            right = min(im_w, int(cx + cw))
+                            bottom = min(im_h, int(cy + ch))
+
+                        if right > left and bottom > top:
+                            cropped = im.crop((left, top, right, bottom))
+                            buf = io.BytesIO()
+                            cropped.save(buf, format="PNG")
+                            image_bytes = buf.getvalue()
+                    except Exception as crop_err:
+                        print(f"Crop processing skipped: {crop_err}")
+
+                # Erase old logo location:
+                # Use add_redact_annot with text=0 so underlying text is preserved —
+                # only the image layer at the original position is removed.
+                page.add_redact_annot(orig_rect, fill=(1, 1, 1))
                 try:
-                    import io
-                    from PIL import Image
-                    im = Image.open(io.BytesIO(image_bytes))
-                    im_w, im_h = im.size
-                    cx = crop_box.get("x", 0.0)
-                    cy = crop_box.get("y", 0.0)
-                    cw = crop_box.get("width", 1.0)
-                    ch = crop_box.get("height", 1.0)
+                    # text=0 → keep text; images=PDF_REDACT_IMAGE_REMOVE → erase image; graphics=0 → keep vector graphics
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=0, text=0)
+                except TypeError:
+                    # Older PyMuPDF versions don't have the `text` param — fall back gracefully
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=0)
 
-                    # Normalized coordinates (0.0 to 1.0)
-                    if cx <= 1.0 and cy <= 1.0 and cw <= 1.0 and ch <= 1.0:
-                        left = max(0, int(cx * im_w))
-                        top = max(0, int(cy * im_h))
-                        right = min(im_w, int((cx + cw) * im_w))
-                        bottom = min(im_h, int((cy + ch) * im_h))
-                    else:
-                        left = max(0, int(cx))
-                        top = max(0, int(cy))
-                        right = min(im_w, int(cx + cw))
-                        bottom = min(im_h, int(cy + ch))
+                # Paint an opaque white rect over the old location to ensure clean erase
+                page.draw_rect(orig_rect, color=None, fill=(1, 1, 1), width=0)
 
-                    if right > left and bottom > top:
-                        cropped = im.crop((left, top, right, bottom))
-                        buf = io.BytesIO()
-                        fmt = im.format if im.format in ["PNG", "JPEG", "WEBP"] else "PNG"
-                        cropped.save(buf, format=fmt)
-                        image_bytes = buf.getvalue()
-                except Exception as crop_err:
-                    print(f"Crop processing skipped: {crop_err}")
+                # Insert the image at the new bounding box
+                nx = new_bounding_box.get("x", ox)
+                ny = new_bounding_box.get("y", oy)
+                nw = new_bounding_box.get("width", ow)
+                nh = new_bounding_box.get("height", oh)
+                new_rect = fitz.Rect(nx, ny, nx + nw, ny + nh)
 
-            # Redact old image position
-            page.add_redact_annot(orig_rect, fill=(1, 1, 1))
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=0)
-            page.draw_rect(orig_rect, color=None, fill=(1, 1, 1), width=0)
+                # insert_image does not accept keep_proportion — it always fills the rect
+                page.insert_image(new_rect, stream=image_bytes)
 
-            # Insert image at new bounding box
-            nx = new_bounding_box.get("x", ox)
-            ny = new_bounding_box.get("y", oy)
-            nw = new_bounding_box.get("width", ow)
-            nh = new_bounding_box.get("height", oh)
-            new_rect = fitz.Rect(nx, ny, nx + nw, ny + nh)
+                doc.save(temp_output_path)
+                doc.close()
 
-            page.insert_image(new_rect, stream=image_bytes, keep_proportion=False)
+                # Manage undo stack
+                if not hasattr(self, "undo_stacks"):
+                    self.undo_stacks = {}
+                if not hasattr(self, "redo_stacks"):
+                    self.redo_stacks = {}
+                self.undo_stacks.setdefault(session_id, [])
+                self.redo_stacks[session_id] = []
 
-            doc.save(temp_output_path)
-            doc.close()
+                backup_name = f"backup_undo_{len(self.undo_stacks[session_id])}.pdf"
+                backup_path = os.path.join(session_folder, backup_name)
+                shutil.copy2(current_path, backup_path)
+                self.undo_stacks[session_id].append(backup_path)
 
-            # Manage undo stack
-            if not hasattr(self, "undo_stacks"):
-                self.undo_stacks = {}
-            if not hasattr(self, "redo_stacks"):
-                self.redo_stacks = {}
-            self.undo_stacks.setdefault(session_id, [])
-            self.redo_stacks[session_id] = []
+                shutil.move(temp_output_path, current_path)
 
-            backup_name = f"backup_undo_{len(self.undo_stacks[session_id])}.pdf"
-            backup_path = os.path.join(session_folder, backup_name)
-            shutil.copy2(current_path, backup_path)
-            self.undo_stacks[session_id].append(backup_path)
-
-            shutil.move(temp_output_path, current_path)
-
-            analysis = self.analyze_session_page(session_id, page_number)
-            return {
-                "success": True,
-                "textObjects": analysis.get("textObjects", []),
-                "imageObjects": analysis.get("imageObjects", [])
-            }
-        else:
-            doc.close()
-            return {"success": False, "error": f"Invalid page number: {page_number}"}
-
-
-
+                analysis = self.analyze_session_page(session_id, page_number)
+                return {
+                    "success": True,
+                    "textObjects": analysis.get("textObjects", []),
+                    "imageObjects": analysis.get("imageObjects", [])
+                }
+            else:
+                doc.close()
+                return {"success": False, "error": f"Invalid page number: {page_number}"}
+        except Exception as exc:
+            try:
+                doc.close()
+            except Exception:
+                pass
+            # Clean up partial temp file if it exists
+            try:
+                if os.path.exists(temp_output_path):
+                    os.remove(temp_output_path)
+            except Exception:
+                pass
+            raise exc

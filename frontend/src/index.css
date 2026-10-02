@@ -4581,3 +4581,286 @@ html.theme-transitioning .find-replace-card {
     min-width: 36px !important;
   }
 }
+
+/* ==========================================================================
+   Mobile-First Focused Text Editor (Bottom Sheet with Top Actions & Clearance)
+   ========================================================================== */
+
+/* 1. Viewport clearance: When editing on mobile, add huge bottom padding so
+   lines at the very bottom of the PDF can be scrolled freely into upper view */
+@media (max-width: 768px) {
+  .is-editing-mode .canvas-viewport {
+    padding-bottom: 55vh !important;
+  }
+}
+
+/* 2. Visual highlight on the PDF canvas for the line currently being edited on mobile */
+.active-mobile-target-highlight {
+  border: 2px solid #2563eb !important;
+  background: rgba(37, 99, 235, 0.22) !important;
+  border-radius: 3px !important;
+  pointer-events: none !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  animation: pulseMobileTarget 1.4s infinite ease-in-out !important;
+}
+
+@keyframes pulseMobileTarget {
+  0%, 100% {
+    opacity: 0.95;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.15);
+  }
+}
+
+/* 3. Mobile Sheet Backdrop */
+.mobile-text-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 220;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: mobileBackdropFade 0.15s ease-out;
+}
+
+@keyframes mobileBackdropFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 4. Mobile Text Edit Sheet Card */
+.mobile-text-edit-sheet {
+  background: var(--surface-1);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  border-top: 1px solid var(--border-strong);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  animation: mobileSheetSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+@keyframes mobileSheetSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.mobile-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-4);
+  margin: 0 auto 2px auto;
+  flex-shrink: 0;
+}
+
+/* Top action bar: Cancel, Title, Save */
+.mobile-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.mobile-sheet-btn-cancel:active {
+  background: var(--surface-3);
+  transform: scale(0.97);
+}
+
+.mobile-sheet-title-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+}
+
+.mobile-sheet-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.mobile-sheet-subtitle {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.mobile-sheet-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: #2563eb;
+  border: none;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.mobile-sheet-btn-save:active {
+  background: #1d4ed8;
+  transform: scale(0.97);
+}
+.mobile-sheet-btn-save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Original text preview reference */
+.mobile-sheet-original-ref {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-ref-label {
+  color: var(--text-3);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-ref-text {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Text input / textarea area */
+.mobile-sheet-input-wrapper {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1.5px solid var(--accent);
+  background: var(--surface-2);
+  padding: 10px 12px;
+  font-size: 16px !important; /* 16px prevents iOS Safari auto-zoom */
+  line-height: 1.4;
+  color: var(--text-1);
+  resize: none;
+  font-family: inherit;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-light);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+/* Bottom tool strip */
+.mobile-sheet-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-tools-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-sheet-color-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1);
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+}
+.mobile-sheet-color-pill:active {
+  background: var(--surface-3);
+}
+
+.mobile-sheet-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.mobile-sheet-btn-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mobile-sheet-btn-reset:active {
+  background: var(--surface-2);
+}
+
+.mobile-sheet-btn-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mobile-sheet-btn-delete:active {
+  background: rgba(239, 68, 68, 0.16);
+}
+

@@ -6,6 +6,7 @@ import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { InlineEditorBar } from './InlineEditorBar';
 import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
+import { MobileTextEditorSheet } from './MobileTextEditorSheet';
 import { Image as ImageIcon } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -132,6 +133,7 @@ interface PdfPageItemProps {
     e: React.PointerEvent,
     type: 'move' | 'nw' | 'ne' | 'se' | 'sw'
   ) => void;
+  isMobile?: boolean;
 }
 
 const PdfPageItem: React.FC<PdfPageItemProps> = ({
@@ -158,6 +160,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   handleKeyDown,
   onSelectImageWithSnapshot,
   onPointerDownImage,
+  isMobile = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -458,6 +461,24 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         const bboxHeight = bbox.height * scale;
 
         if (isEditing) {
+          if (isMobile) {
+            return (
+              <div
+                key={obj.id}
+                className="active-mobile-target-highlight"
+                style={{
+                  position: 'absolute',
+                  left: `${bboxLeft}px`,
+                  top: `${bboxTop}px`,
+                  width: `${Math.max(bboxWidth, 24)}px`,
+                  height: `${Math.max(bboxHeight, 16)}px`,
+                  zIndex: 40,
+                }}
+                id={`editable-${obj.id}`}
+              />
+            );
+          }
+
           const origRgb = obj.font.color || [0, 0, 0];
           const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;
           const activeColorHex = activeColor || origHex;
@@ -636,6 +657,22 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [activeColor, setActiveColor] = useState<string>('');
   const [activeBgColor, setActiveBgColor] = useState<string>('#ffffff');
 
+  // Screen size check for mobile-first interaction
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth <= 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Selected Image & Transformation State
   const [selectedImage, setSelectedImage] = useState<ImageObject | null>(null);
   const [adjustmentState, setAdjustmentState] = useState<ImageAdjustmentState | null>(null);
@@ -669,12 +706,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     };
   }, [externalPdfDoc, pdfUrl, onPdfDocLoaded]);
 
-  // Focus inline input on select
+  // Focus inline input on select (Desktop only — on mobile the sheet handles focus)
   useEffect(() => {
-    if (activeObj && inputRef.current) {
+    if (activeObj && inputRef.current && !isMobileScreen) {
       inputRef.current.focus({ preventScroll: true });
     }
-  }, [activeObj]);
+  }, [activeObj, isMobileScreen]);
 
   // Auto-scroll to matching overlay on canvas when search match changes
   useEffect(() => {
@@ -740,6 +777,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     onActiveEditChange?.(true);
     setSelectedImage(null);
     setAdjustmentState(null);
+
+    // On mobile, scroll clicked line into upper/center view so it is not obscured by bottom drawer
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setTimeout(() => {
+        const el = document.getElementById(`editable-${obj.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 70);
+    }
   };
 
   const handleCommit = async () => {
@@ -988,10 +1035,28 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   return (
     <div className="pdf-viewer-root">
-      {/* Docked Contextual Edit Subbar */}
-      {activeObj && (
+      {/* Docked Contextual Edit Subbar (Desktop only) */}
+      {activeObj && !isMobileScreen && (
         <InlineEditorBar
           textObject={activeObj}
+          selectedColor={activeColor}
+          onSelectColor={(hex) => setActiveColor(hex)}
+          onCommit={handleCommit}
+          onCancel={() => {
+            setActiveObj(null);
+            onActiveEditChange?.(false);
+          }}
+          onDeleteLine={handleDeleteLine}
+          isSubmitting={isProcessing}
+        />
+      )}
+
+      {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
+      {activeObj && isMobileScreen && (
+        <MobileTextEditorSheet
+          textObject={activeObj}
+          activeText={activeText}
+          onChangeText={setActiveText}
           selectedColor={activeColor}
           onSelectColor={(hex) => setActiveColor(hex)}
           onCommit={handleCommit}
@@ -1087,6 +1152,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               handleKeyDown={handleKeyDown}
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}
+              isMobile={isMobileScreen}
             />
           ))}
         </div>

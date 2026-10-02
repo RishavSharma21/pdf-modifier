@@ -495,7 +495,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                     # Cache for dynamically loaded system and Base-14 fonts
                     loaded_fonts: Dict[str, Tuple[str, Optional[fitz.Font], float]] = {}
 
-                    def get_font_render_details(fi: Optional[FontInfo]) -> Tuple[str, Optional[fitz.Font], float]:
+                    def get_font_render_details(fi: Optional[FontInfo], text_sample: str = "") -> Tuple[str, Optional[fitz.Font], float]:
                         f_size = fi.size if (fi and hasattr(fi, "size")) else def_font_size
                         f_bold = (getattr(fi, "weight", "normal") == "bold")
                         f_italic = (getattr(fi, "style", "normal") == "italic")
@@ -507,17 +507,37 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             f_italic = True
 
                         cache_key = f"{f_clean}__w{f_bold}__i{f_italic}"
+                        chars_to_check = [c for c in (text_sample or sub_new) if ord(c) > 32]
                         if cache_key in loaded_fonts:
                             c_name, c_obj, c_mult = loaded_fonts[cache_key]
-                            return c_name, c_obj, f_size * c_mult
+                            if not chars_to_check or (c_obj and all(c_obj.has_glyph(ord(c)) for c in chars_to_check)):
+                                return c_name, c_obj, f_size * c_mult
 
-                        fonts_dir = os.environ.get('WINDIR', 'C:\\Windows') + '\\Fonts'
-                        if not os.path.exists(fonts_dir):
-                            for d in ['/usr/share/fonts/truetype', '/usr/share/fonts']:
-                                if os.path.exists(d):
-                                    fonts_dir = d
-                                    break
+                        # 1. Attempt to reuse matching embedded font directly from the PDF page
+                        # This preserves 100% of the original document typography (e.g. Rubik, Inter, Helvetica)
+                        try:
+                            for fx in page_fitz.get_fonts():
+                                xref = fx[0]
+                                emb_name = (fx[3] or "").lower()
+                                emb_clean = emb_name.split('+')[-1]
+                                name_match = (
+                                    f_clean in emb_clean or
+                                    emb_clean in f_clean or
+                                    any(k in emb_clean for k in f_clean.split('-') if len(k) > 2)
+                                )
+                                if name_match:
+                                    font_buffer = doc.extract_font(xref)[3]
+                                    if font_buffer and len(font_buffer) > 0:
+                                        test_font = fitz.Font(fontbuffer=font_buffer)
+                                        if not chars_to_check or all(test_font.has_glyph(ord(c)) for c in chars_to_check):
+                                            font_alias = f"F_EMB_{xref}"
+                                            page_fitz.insert_font(fontname=font_alias, fontbuffer=font_buffer)
+                                            loaded_fonts[cache_key] = (font_alias, test_font, 1.0)
+                                            return font_alias, test_font, f_size
+                        except Exception:
+                            pass
 
+                        # 2. Candidate system font filenames based on clean font name and weight/style
                         f_cand = None
                         if 'calibri' in f_clean or 'carlito' in f_clean:
                             if f_bold and f_italic: f_cand = 'calibriz.ttf'
@@ -561,24 +581,85 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             elif f_bold: f_cand = 'trebucbd.ttf'
                             elif f_italic: f_cand = 'trebucit.ttf'
                             else: f_cand = 'trebuc.ttf'
+                        elif any(k in f_clean for k in ['mono', 'console', 'code']):
+                            f_cand = 'courbd.ttf' if f_bold else 'cour.ttf'
+                        elif any(k in f_clean for k in ['serif', 'cambria', 'garamond', 'baskerville']):
+                            f_cand = 'timesbd.ttf' if f_bold else 'times.ttf'
+                        else:
+                            # Standard sans fallback (for Rubik, Roboto, Inter, Poppins, Montserrat, OpenSans, etc.)
+                            f_cand = 'arialbd.ttf' if f_bold else 'arial.ttf'
+
+                        font_dirs = [
+                            os.environ.get('WINDIR', 'C:\\Windows') + '\\Fonts',
+                            '/usr/share/fonts/truetype',
+                            '/usr/share/fonts/truetype/liberation',
+                            '/usr/share/fonts/truetype/dejavu',
+                            '/usr/share/fonts',
+                            '/usr/local/share/fonts',
+                            os.path.expanduser('~/.fonts')
+                        ]
 
                         matched_file = None
-                        if f_cand and os.path.exists(os.path.join(fonts_dir, f_cand)):
-                            matched_file = os.path.join(fonts_dir, f_cand)
-
                         font_obj = None
+                        if f_cand:
+                            for d in font_dirs:
+                                if os.path.exists(d):
+                                    test_path = os.path.join(d, f_cand)
+                                    if os.path.exists(test_path):
+                                        try:
+                                            test_font = fitz.Font(fontfile=test_path)
+                                            if not chars_to_check or all(test_font.has_glyph(ord(c)) for c in chars_to_check):
+                                                matched_file = test_path
+                                                font_obj = test_font
+                                                break
+                                        except Exception:
+                                            pass
+
+                        # 3. Unicode Currency / Special Symbol Fallback
+                        # If candidate font cannot represent all characters (e.g. ₹ Indian Rupee sign), search for any TrueType font that can
+                        if not matched_file:
+                            unicode_cands = [
+                                'arialbd.ttf' if f_bold else 'arial.ttf',
+                                'segoeuib.ttf' if f_bold else 'segoeui.ttf',
+                                'calibrib.ttf' if f_bold else 'calibri.ttf',
+                                'tahomabd.ttf' if f_bold else 'tahoma.ttf',
+                                'verdanab.ttf' if f_bold else 'verdana.ttf',
+                                'NirmalaB.ttf' if f_bold else 'Nirmala.ttf',
+                                'LiberationSans-Bold.ttf' if f_bold else 'LiberationSans-Regular.ttf',
+                                'DejaVuSans-Bold.ttf' if f_bold else 'DejaVuSans.ttf',
+                                'NotoSans-Bold.ttf' if f_bold else 'NotoSans-Regular.ttf',
+                            ]
+                            for uc in unicode_cands:
+                                for d in font_dirs:
+                                    if os.path.exists(d):
+                                        p = os.path.join(d, uc)
+                                        if os.path.exists(p):
+                                            try:
+                                                cand_font = fitz.Font(fontfile=p)
+                                                if not chars_to_check or all(cand_font.has_glyph(ord(c)) for c in chars_to_check):
+                                                    matched_file = p
+                                                    font_obj = cand_font
+                                                    break
+                                            except Exception:
+                                                pass
+                                if matched_file:
+                                    break
+
                         fname = "helv"
                         sz_mult = 1.0
                         if matched_file:
                             font_alias = f"F_{abs(hash(matched_file)) % 10000}"
                             try:
-                                page_fitz.insert_font(fontfile=matched_file, fontname=font_alias)
+                                is_simple = all(ord(c) < 256 for c in (text_sample or sub_new))
+                                page_fitz.insert_font(fontfile=matched_file, fontname=font_alias, set_simple=is_simple)
                                 fname = font_alias
-                                font_obj = fitz.Font(fontfile=matched_file)
+                                if not font_obj:
+                                    font_obj = fitz.Font(fontfile=matched_file)
                             except Exception:
                                 matched_file = None
 
                         if not matched_file:
+                            # Only use Base-14 PDF fonts for pure ASCII where no TrueType font is found
                             if 'times' in f_clean or 'serif' in f_clean or 'roman' in f_clean:
                                 if f_bold and f_italic: fname = "tibi"
                                 elif f_bold: fname = "tibo"
@@ -637,7 +718,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                     total_line_w = 0.0
                     piece_render_info = []
                     for p_txt, p_font, p_is_link in final_pieces:
-                        p_fname, p_fobj, p_size = get_font_render_details(p_font)
+                        p_fname, p_fobj, p_size = get_font_render_details(p_font, p_txt)
                         p_w = measure_piece_w(p_txt, p_fname, p_fobj, p_size)
                         total_line_w += p_w
                         piece_render_info.append({

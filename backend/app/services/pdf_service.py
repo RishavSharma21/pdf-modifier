@@ -309,20 +309,55 @@ class PDFService:
                 except ValueError:
                     pass
 
-        # Pick font
+        # Pick font with Unicode support
         f_fam = font_family.lower()
         is_bold = (font_weight == "bold")
-        if "times" in f_fam or "serif" in f_fam:
-            fname = "tibo" if is_bold else "tiro"
-        elif "courier" in f_fam or "mono" in f_fam:
-            fname = "cobo" if is_bold else "cour"
-        else:
-            fname = "hebo" if is_bold else "helv"
 
         doc = fitz.open(current_path)
         page_idx = page_number - 1
         if 0 <= page_idx < len(doc):
             page = doc[page_idx]
+
+            # Resolve TrueType font if available (essential for ₹ and full Unicode coverage)
+            fonts_dirs = [
+                os.environ.get('WINDIR', 'C:\\Windows') + '\\Fonts',
+                '/usr/share/fonts/truetype',
+                '/usr/share/fonts/truetype/liberation',
+                '/usr/share/fonts/truetype/dejavu',
+                '/usr/share/fonts',
+            ]
+            f_cand = 'arialbd.ttf' if is_bold else 'arial.ttf'
+            if "times" in f_fam or "serif" in f_fam:
+                f_cand = 'timesbd.ttf' if is_bold else 'times.ttf'
+            elif "courier" in f_fam or "mono" in f_fam:
+                f_cand = 'courbd.ttf' if is_bold else 'cour.ttf'
+
+            matched_file = None
+            for d in fonts_dirs:
+                if os.path.exists(d):
+                    p = os.path.join(d, f_cand)
+                    if os.path.exists(p):
+                        matched_file = p
+                        break
+
+            fname = "helv"
+            if matched_file:
+                font_alias = f"F_INS_{abs(hash(matched_file)) % 10000}"
+                try:
+                    is_simple = all(ord(c) < 256 for c in text)
+                    page.insert_font(fontfile=matched_file, fontname=font_alias, set_simple=is_simple)
+                    fname = font_alias
+                except Exception:
+                    matched_file = None
+
+            if not matched_file:
+                if "times" in f_fam or "serif" in f_fam:
+                    fname = "tibo" if is_bold else "tiro"
+                elif "courier" in f_fam or "mono" in f_fam:
+                    fname = "cobo" if is_bold else "cour"
+                else:
+                    fname = "hebo" if is_bold else "helv"
+
             # y passed is top of text box, offset by font_size * 0.85 for baseline
             baseline_y = y + (font_size * 0.85)
             page.insert_text(

@@ -494,7 +494,12 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         page_fitz.draw_rect(ul_paint, color=None, fill=bg_color, width=0)
 
                     PAGE_RIGHT_MARGIN = max(page_fitz.rect.width - 36.0, 100.0)
-                    avail_width = max(target_rect.width, PAGE_RIGHT_MARGIN - insertion_x)
+                    # Hard cap: replacement text must NEVER exceed the original line's right edge.
+                    # Using min() ensures we don't give more room than the original bbox.
+                    avail_width = min(
+                        max(target_rect.width, 20.0),          # at least 20pt
+                        PAGE_RIGHT_MARGIN - insertion_x         # never past page margin
+                    )
                     font_color = target_font.color if target_font else (0, 0, 0)
 
                     # Cache for dynamically loaded system and Base-14 fonts
@@ -777,10 +782,12 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             "width": p_w,
                         })
 
-                    # Calculate proportional scaling if line grew beyond available width
+                    # Proportional scaling if line grew beyond available width.
+                    # Scale only when text is clearly wider (>2pt tolerance to avoid micro-rounding).
                     global_scale = 1.0
-                    if total_line_w > avail_width and avail_width > 20:
-                        global_scale = max(avail_width / total_line_w, 0.75)
+                    if total_line_w > avail_width + 2.0 and avail_width > 20:
+                        # Minimum 0.82 — keeps text legible while preventing overflow
+                        global_scale = max(avail_width / total_line_w, 0.82)
 
                     # 4. Render pieces sequentially along exact baseline
                     curr_x = insertion_x

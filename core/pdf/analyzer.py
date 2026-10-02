@@ -68,6 +68,111 @@ class PDFAnalyzer:
                 base_font=s_font_name,
             )
 
+    BULLET_CHARS: Set[str] = {
+        '•', '·', '●', '○', '◦', '▪', '▫', '■', '□', '◆', '◇', '►', '▸', '‣', '⁃',
+        '\u2022', '\u25cf', '\u25e6', '\u25aa', '\uf0b7', '\uf0a7', '\xb7', '*', '–', '—'
+    }
+
+    @classmethod
+    def _is_bullet_span(cls, span: dict) -> bool:
+        text = span.get("text", "").strip()
+        if not text:
+            return False
+        if text in cls.BULLET_CHARS:
+            return True
+        if len(text) == 1 and not text.isalnum() and not text.isspace():
+            font = span.get("font", "").lower()
+            if any(k in font for k in ["symbol", "dingbat", "wingding", "cmsy"]):
+                return True
+        return False
+
+    @staticmethod
+    def _is_bold_span(span: dict) -> bool:
+        font = span.get("font", "").lower()
+        flags = span.get("flags", 0)
+        return bool(flags & 16) or any(k in font for k in ["bold", "black", "heavy", "medium", "semibold"])
+
+    @classmethod
+    def _group_line_spans(cls, spans: List[dict]) -> List[List[dict]]:
+        """Group visual line spans into logical editable units.
+        
+        1. Isolates leading bullet dots into their own unit so users never
+           accidentally delete or re-format bullets.
+        2. Separates bold labels (e.g. 'Languages:', 'Frameworks / Libraries:')
+           from following regular text so editing body text never turns bold.
+        3. Merges contiguous spans of the same flow so sentences and paragraphs
+           remain unified.
+        """
+        if not spans:
+            return []
+
+        expanded_spans = []
+        first = spans[0]
+        first_text = first.get("text", "")
+        first_stripped = first_text.strip()
+
+        if cls._is_bullet_span(first):
+            expanded_spans.append({**first, "is_bullet": True})
+            expanded_spans.extend(spans[1:])
+        elif len(first_text) > 1 and first_text.lstrip() and first_text.lstrip()[0] in cls.BULLET_CHARS:
+            bullet_char = first_text.lstrip()[0]
+            rest_text = first_text[first_text.find(bullet_char) + 1:].lstrip()
+            b_sb = first.get("bbox", [0, 0, 10, 10])
+            char_w = first.get("size", 10.0) * 0.7
+            b_span = {
+                **first,
+                "text": bullet_char,
+                "bbox": [b_sb[0], b_sb[1], b_sb[0] + char_w, b_sb[3]],
+                "is_bullet": True
+            }
+            rest_span = {
+                **first,
+                "text": rest_text,
+                "bbox": [b_sb[0] + char_w, b_sb[1], b_sb[2], b_sb[3]],
+                "is_bullet": False
+            }
+            expanded_spans.append(b_span)
+            expanded_spans.append(rest_span)
+            expanded_spans.extend(spans[1:])
+        else:
+            expanded_spans.extend(spans)
+
+        groups = []
+        curr_group = []
+
+        for s in expanded_spans:
+            t = s.get("text", "")
+            if not t.strip() and not s.get("is_bullet"):
+                continue
+
+            if s.get("is_bullet"):
+                if curr_group:
+                    groups.append(curr_group)
+                    curr_group = []
+                groups.append([s])
+                continue
+
+            if not curr_group:
+                curr_group.append(s)
+                continue
+
+            prev_s = curr_group[-1]
+            prev_is_bold = cls._is_bold_span(prev_s)
+            curr_is_bold = cls._is_bold_span(s)
+            prev_text = prev_s.get("text", "").rstrip()
+
+            # Separate bold label ending in ':' from following regular body text
+            if prev_is_bold and not curr_is_bold and (prev_text.endswith(":") or prev_text.endswith(":-") or prev_text.endswith(" -")):
+                groups.append(curr_group)
+                curr_group = [s]
+            else:
+                curr_group.append(s)
+
+        if curr_group:
+            groups.append(curr_group)
+
+        return groups if groups else [spans]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -76,9 +181,9 @@ class PDFAnalyzer:
         """Extract editable text for a page (0-indexed).
 
         Returns one EditableText per logical unit:
-          • For lines without links → full merged line (all spans joined).
-          • For lines with links    → each link span is its own object;
-                                      surrounding non-link text is merged separately.
+          • Bullet dots are isolated from bullet text.
+          • Bold labels (e.g. 'Languages:') are separated from regular items.
+          • Contiguous spans of normal text are merged into clean visual lines.
         """
         doc = fitz.open(self.pdf_path)
         page = doc[page_index]
@@ -113,72 +218,72 @@ class PDFAnalyzer:
                 if not spans:
                     continue
 
-                # Merge all spans of this visual line into a single EditableText.
-                # This guarantees:
-                # 1. Unified line editing — shortening/lengthening URLs or words reflows
-                #    naturally without leaving blank gaps or colliding with adjacent boxes.
-                # 2. Numbered bullets like "2)" are unified with their line text.
-                # 3. Inter-span spacing is properly preserved.
-                group_spans = spans
-                group_text = ""
-                for s_i, s in enumerate(group_spans):
-                    t = s.get("text", "")
-                    if not t:
+                span_groups = self._group_line_spans(spans)
+
+                for g_idx, group_spans in enumerate(span_groups):
+                    group_text = ""
+                    for s_i, s in enumerate(group_spans):
+                        t = s.get("text", "")
+                        if not t:
+                            continue
+                        if group_text:
+                            prev_span = group_spans[s_i - 1]
+                            prev_x1 = prev_span["bbox"][2]
+                            curr_x0 = s["bbox"][0]
+                            gap = curr_x0 - prev_x1
+                            if gap >= s.get("size", 12.0) * 0.18 and not group_text.endswith(" ") and not t.startswith(" "):
+                                group_text += " "
+                        group_text += t
+                    if not group_text.strip():
                         continue
-                    if group_text:
-                        prev_span = group_spans[s_i - 1]
-                        prev_x1 = prev_span["bbox"][2]
-                        curr_x0 = s["bbox"][0]
-                        gap = curr_x0 - prev_x1
-                        if gap >= s.get("size", 12.0) * 0.18 and not group_text.endswith(" ") and not t.startswith(" "):
-                            group_text += " "
-                    group_text += t
-                if not group_text.strip():
-                    continue
 
-                x0 = min(s["bbox"][0] for s in group_spans)
-                y0 = min(s["bbox"][1] for s in group_spans)
-                x1 = max(s["bbox"][2] for s in group_spans)
-                y1 = max(s["bbox"][3] for s in group_spans)
-                group_bbox = BoundingBox(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
-                obj_id = f"line-{page_num}-{block_idx}-{line_idx}"
+                    x0 = min(s["bbox"][0] for s in group_spans)
+                    y0 = min(s["bbox"][1] for s in group_spans)
+                    x1 = max(s["bbox"][2] for s in group_spans)
+                    y1 = max(s["bbox"][3] for s in group_spans)
+                    group_bbox = BoundingBox(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
+                    
+                    if len(span_groups) == 1:
+                        obj_id = f"line-{page_num}-{block_idx}-{line_idx}"
+                    else:
+                        obj_id = f"line-{page_num}-{block_idx}-{line_idx}-g{g_idx}"
 
-                runs: List[TextRun] = []
-                for s_i, span in enumerate(group_spans):
-                    sb = span["bbox"]
-                    sp_origin = span.get("origin", (sb[0], sb[3]))
-                    sp_bbox = BoundingBox(
-                        x=sb[0], y=sb[1],
-                        width=sb[2] - sb[0], height=sb[3] - sb[1]
+                    runs: List[TextRun] = []
+                    for s_i, span in enumerate(group_spans):
+                        sb = span["bbox"]
+                        sp_origin = span.get("origin", (sb[0], sb[3]))
+                        sp_bbox = BoundingBox(
+                            x=sb[0], y=sb[1],
+                            width=sb[2] - sb[0], height=sb[3] - sb[1]
+                        )
+                        run_fi = self._build_span_font_info(span, page_fonts)
+                        runs.append(TextRun(
+                            id=f"{obj_id}-s{s_i}",
+                            text=span.get("text", ""),
+                            bounding_box=sp_bbox,
+                            font=run_fi,
+                            origin=(float(sp_origin[0]), float(sp_origin[1]))
+                        ))
+
+                    # Primary font for the merged line: use the longest span
+                    longest_span = max(group_spans, key=lambda s: len(s.get("text", "")))
+                    line_font_info = self._build_span_font_info(longest_span, page_fonts)
+
+                    first_span = group_spans[0]
+                    first_origin = first_span.get("origin", (x0, y1))
+                    origin = (float(first_origin[0]), float(first_origin[1]))
+
+                    editable = EditableText(
+                        id=obj_id,
+                        page_number=page_num,
+                        text=group_text,
+                        bounding_box=group_bbox,
+                        font=line_font_info,
+                        origin=origin,
+                        runs=runs,
+                        rotation=page.rotation,
                     )
-                    run_fi = self._build_span_font_info(span, page_fonts)
-                    runs.append(TextRun(
-                        id=f"{obj_id}-s{s_i}",
-                        text=span.get("text", ""),
-                        bounding_box=sp_bbox,
-                        font=run_fi,
-                        origin=(float(sp_origin[0]), float(sp_origin[1]))
-                    ))
-
-                # Primary font for the merged line: use the longest span
-                longest_span = max(group_spans, key=lambda s: len(s.get("text", "")))
-                line_font_info = self._build_span_font_info(longest_span, page_fonts)
-
-                first_span = group_spans[0]
-                first_origin = first_span.get("origin", (x0, y1))
-                origin = (float(first_origin[0]), float(first_origin[1]))
-
-                editable = EditableText(
-                    id=obj_id,
-                    page_number=page_num,
-                    text=group_text,
-                    bounding_box=group_bbox,
-                    font=line_font_info,
-                    origin=origin,
-                    runs=runs,
-                    rotation=page.rotation,
-                )
-                editable_objects.append(editable)
+                    editable_objects.append(editable)
 
             block_idx += 1
 

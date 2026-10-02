@@ -621,7 +621,9 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             # Standard sans fallback (for Rubik, Roboto, Inter, Poppins, Montserrat, OpenSans, etc.)
                             f_cand = 'arialbd.ttf' if f_bold else 'arial.ttf'
 
+                        bundled_font_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts", "assets"))
                         font_dirs = [
+                            bundled_font_dir,
                             os.environ.get('WINDIR', 'C:\\Windows') + '\\Fonts',
                             '/usr/share/fonts/truetype',
                             '/usr/share/fonts/truetype/liberation',

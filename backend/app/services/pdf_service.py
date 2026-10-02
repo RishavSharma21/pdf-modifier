@@ -319,7 +319,9 @@ class PDFService:
             page = doc[page_idx]
 
             # Resolve TrueType font if available (essential for ₹ and full Unicode coverage)
+            bundled_font_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "core", "fonts", "assets"))
             fonts_dirs = [
+                bundled_font_dir,
                 os.environ.get('WINDIR', 'C:\\Windows') + '\\Fonts',
                 '/usr/share/fonts/truetype',
                 '/usr/share/fonts/truetype/liberation',

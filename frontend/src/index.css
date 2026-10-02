@@ -4208,15 +4208,26 @@ html.theme-transitioning .find-replace-card {
     min-height: 20px;
   }
 
-  /* 4. Floating Toolbar on Mobile */
+  /* 4. Floating Toolbar on Mobile — Sleek Glassmorphic Floating Island */
   .floating-toolbar {
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     height: 38px;
     max-width: calc(100vw - 12px);
-    padding: 0 5px;
+    padding: 0 6px;
     gap: 2px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    background: rgba(18, 22, 28, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    box-shadow: 0 10px 32px -4px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25);
     overflow: visible;
+  }
+
+  [data-theme="light"] .floating-toolbar {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 32px -4px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
   }
 
   /* When editing on mobile, hide the floating navigation dock so they don't collide */
@@ -4233,6 +4244,14 @@ html.theme-transitioning .find-replace-card {
     width: 30px;
     height: 30px;
     flex-shrink: 0;
+    border-radius: 50%;
+    transition: transform 0.1s, background-color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .toolbar-btn:active:not(:disabled) {
+    transform: scale(0.92);
+    background: var(--surface-3);
   }
 
   .toolbar-divider {
@@ -4243,15 +4262,29 @@ html.theme-transitioning .find-replace-card {
 
   .page-indicator-btn {
     font-size: 11.5px;
-    padding: 2px 5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 12px;
     flex-shrink: 0;
+    transition: transform 0.1s, background-color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .page-indicator-btn:active {
+    transform: scale(0.94);
   }
 
   .zoom-indicator-btn {
     font-size: 11.5px;
-    padding: 2px 5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 12px;
     gap: 3px;
     flex-shrink: 0;
+    transition: transform 0.1s, background-color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .zoom-indicator-btn:active {
+    transform: scale(0.94);
   }
 
   .zoom-dropdown-menu {
@@ -4808,7 +4841,7 @@ html.theme-transitioning .find-replace-card {
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-2);
@@ -4817,10 +4850,11 @@ html.theme-transitioning .find-replace-card {
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .mobile-sheet-btn-cancel:active {
   background: var(--surface-3);
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 [data-theme="dark"] .mobile-sheet-btn-cancel {
@@ -4847,13 +4881,29 @@ html.theme-transitioning .find-replace-card {
   color: #f8fafc;
 }
 
-.mobile-sheet-subtitle {
-  font-size: 11px;
-  color: var(--text-3);
+.mobile-sheet-font-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1.5px 8px;
+  border-radius: 12px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: 0.01em;
 }
 
-[data-theme="dark"] .mobile-sheet-subtitle {
-  color: #8b949e;
+[data-theme="dark"] .mobile-sheet-font-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.font-pill-dot {
+  opacity: 0.5;
+  font-weight: 700;
 }
 
 .mobile-sheet-btn-save {
@@ -4861,7 +4911,7 @@ html.theme-transitioning .find-replace-card {
   align-items: center;
   gap: 5px;
   padding: 7px 16px;
-  border-radius: 8px;
+  border-radius: 18px;
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   border: none;
   color: #ffffff;
@@ -4871,10 +4921,11 @@ html.theme-transitioning .find-replace-card {
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .mobile-sheet-btn-save:active {
   background: #1d4ed8;
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 .mobile-sheet-btn-save:disabled {
   opacity: 0.65;

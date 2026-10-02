@@ -19,7 +19,7 @@ const COLOR_PRESETS = [
   { label: 'White', hex: '#ffffff' },
   { label: 'Blue', hex: '#2563eb' },
   { label: 'Red', hex: '#dc2626' },
-  { label: 'Slate', hex: '#475569' },
+  { label: 'Emerald', hex: '#16a34a' },
 ];
 
 export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
@@ -116,9 +116,11 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
 
           <div className="mobile-sheet-title-group">
             <span className="mobile-sheet-title">Edit Text</span>
-            <span className="mobile-sheet-subtitle">
-              {textObject.font.family || 'Standard'} • {Math.round(textObject.font.size * 10) / 10} pt
-            </span>
+            <div className="mobile-sheet-font-pill">
+              <span>{textObject.font.family || 'Standard'}</span>
+              <span className="font-pill-dot">·</span>
+              <span>{Math.round(textObject.font.size * 10) / 10} pt</span>
+            </div>
           </div>
 
           <button
@@ -146,7 +148,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
         <div className="mobile-sheet-original-ref">
           <Quote size={13} className="mobile-sheet-ref-icon" />
           <div className="mobile-sheet-ref-content">
-            <span className="mobile-sheet-ref-label">Original:</span>
+            <span className="mobile-sheet-ref-label">Original Text</span>
             <span className="mobile-sheet-ref-text">{textObject.text}</span>
           </div>
         </div>

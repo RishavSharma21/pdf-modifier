@@ -76,6 +76,7 @@ export interface EditResult {
   newBoundingBox?: BoundingBox;
   textObjects?: EditableText[];
   imageObjects?: ImageObject[];
+  pdfBase64?: string;
   error?: string;
 }
 

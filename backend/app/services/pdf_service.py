@@ -206,9 +206,20 @@ class PDFService:
         res_dict = result.to_dict()
         if result.success:
             try:
-                analysis = self.analyze_session_page(session_id, page_number)
-                res_dict["textObjects"] = analysis.get("textObjects", [])
-                res_dict["imageObjects"] = analysis.get("imageObjects", [])
+                # Fast re-analysis: directly extract text and images without redundant pikepdf font inspector pass
+                analyzer = PDFAnalyzer(current_path)
+                page_idx = page_number - 1
+                page_objects = analyzer.analyze_page(page_idx)
+                page_images = analyzer.extract_images(page_idx)
+                res_dict["textObjects"] = [obj.to_dict() for obj in page_objects]
+                res_dict["imageObjects"] = page_images
+            except Exception:
+                pass
+
+            try:
+                import base64
+                with open(current_path, "rb") as f:
+                    res_dict["pdfBase64"] = base64.b64encode(f.read()).decode("ascii")
             except Exception:
                 pass
 

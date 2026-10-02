@@ -641,7 +641,31 @@ export function App() {
 
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
-      await refreshPdfDoc(session.sessionId);
+
+      // Immediately release the processing indicator so UI feels fast and responsive
+      setIsProcessing(false);
+
+      if (res.pdfBase64) {
+        try {
+          const binary = atob(res.pdfBase64);
+          const len = binary.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const freshDoc = await pdfjsLib.getDocument({
+            data: bytes,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapPacked: true,
+          }).promise;
+          setSharedPdfDoc(freshDoc);
+          setPdfRefreshKey((prev) => prev + 1);
+        } catch (e) {
+          refreshPdfDoc(session.sessionId);
+        }
+      } else {
+        refreshPdfDoc(session.sessionId);
+      }
     } catch (err: any) {
       showToast(err.message || 'Failed to edit text', 'error');
       pageAnalysisCache.current.delete(targetPage);

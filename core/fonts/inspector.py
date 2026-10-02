@@ -109,8 +109,14 @@ class FontInspector:
             is_embedded = (xref > 0)
             is_cid = ("Identity" in str(encoding)) or ("Type0" in f_type) or ("CID" in f_type)
 
-            weight = "bold" if "bold" in base_font.lower() else "normal"
-            style = "italic" if ("italic" in base_font.lower() or "oblique" in base_font.lower()) else "normal"
+            _bn_lower = base_font.lower()
+            _bn_clean = _bn_lower.split('+')[-1]  # strip subset prefix like ABCDEF+
+            weight = (
+                "bold" if any(k in _bn_clean for k in ['bold', 'heavy', 'black', 'semibold', 'demi', 'cmbx', 'w6', 'w7', 'w8', 'w9'])
+                or any(_bn_clean.endswith(k) for k in ['-bd', '-b', '-bold'])
+                else "normal"
+            )
+            style = "italic" if ("italic" in _bn_lower or "oblique" in _bn_lower) else "normal"
 
             c2code, code2c = cmaps_by_res.get(res_name, ({}, {}))
 

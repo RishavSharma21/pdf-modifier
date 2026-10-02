@@ -513,11 +513,10 @@ class TrueContentModificationStrategy(TextModificationStrategy):
 
                         cache_key = f"{f_clean}__w{f_bold}__i{f_italic}"
                         sample_str = (text_sample or sub_new or "")
-                        # CRITICAL: Include space (ASCII 32) if the sample text contains spaces!
-                        # Embedded LaTeX fonts (like CMR10, CMBX) lack an ASCII 32 space glyph (has_glyph(32) == False).
-                        # If space is ignored, the embedded font is erroneously selected, but PyMuPDF cannot render
-                        # spaces with it, causing PyMuPDF to insert missing glyphs (mapped to \ufffd diamond characters).
-                        chars_to_check = [c for c in set(sample_str) if ord(c) > 32 or (ord(c) == 32 and ' ' in sample_str)]
+                        # Check visible characters (ord > 32). If an embedded font (like LaTeX CMR10)
+                        # lacks an ASCII 32 space glyph, spaces are cleanly rendered via horizontal
+                        # positioning (word-spacing) during drawing without inserting replacement glyphs.
+                        chars_to_check = [c for c in set(sample_str) if ord(c) > 32]
                         if cache_key in loaded_fonts:
                             c_name, c_obj, c_mult = loaded_fonts[cache_key]
                             if not chars_to_check or (c_obj and all(c_obj.has_glyph(ord(c)) for c in chars_to_check)):
@@ -542,7 +541,10 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 else:
                                     return -1  # Not a family match
                                 
-                                is_emb_bold = any(k in emb_clean for k in ['bold', 'medium', 'heavy', 'black', 'semibold', 'demi', 'w5', 'w6', 'w7', 'w8', 'w9', '500', '600', '700'])
+                                is_emb_bold = (
+                                    any(k in emb_clean for k in ['bold', 'heavy', 'black', 'semibold', 'demi', 'cmbx', 'w6', 'w7', 'w8', 'w9'])
+                                    or any(emb_clean.endswith(k) for k in ['-bd', '-b', '600', '700', '800', '-bold'])
+                                )
                                 if f_bold:
                                     if is_emb_bold: score += 50
                                     else: score -= 20

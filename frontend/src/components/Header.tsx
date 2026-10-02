@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical } from 'lucide-react';
+import { Download, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical, Bug } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
@@ -130,7 +130,34 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </button>
             )}
+
+            <a
+              className="btn-utility-item btn-report-bug"
+              href="https://github.com/RishavSharma21/pdf-modifier/issues/new?labels=bug&template=bug_report.md&title=%5BBug%5D+"
+              target="_blank"
+              rel="noopener noreferrer"
+              id="btn-report-bug"
+              aria-label="Report a bug"
+              title="Report a bug"
+            >
+              <Bug size={14} />
+            </a>
           </div>
+        )}
+
+        {/* Report Bug on landing page too */}
+        {!hasDocument && (
+          <a
+            className="btn-report-bug-landing"
+            href="https://github.com/RishavSharma21/pdf-modifier/issues/new?labels=bug&template=bug_report.md&title=%5BBug%5D+"
+            target="_blank"
+            rel="noopener noreferrer"
+            id="btn-report-bug-landing"
+            aria-label="Report a bug"
+          >
+            <Bug size={14} />
+            <span>Report Bug</span>
+          </a>
         )}
 
         {/* Mobile Overflow Menu Anchor */}
@@ -174,6 +201,18 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
                   </button>
                 )}
+
+                <a
+                  className="mobile-dropdown-item"
+                  href="https://github.com/RishavSharma21/pdf-modifier/issues/new?labels=bug&template=bug_report.md&title=%5BBug%5D+"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  id="btn-mobile-report-bug"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Bug size={15} />
+                  <span>Report Bug</span>
+                </a>
 
                 <div className="mobile-dropdown-divider" />
 

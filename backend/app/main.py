@@ -46,6 +46,12 @@ def health_check():
     }
 
 
+@app.get("/health")
+def health_ping():
+    """Lightweight keep-alive endpoint — used by frontend to prevent Render cold starts."""
+    return {"ok": True}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

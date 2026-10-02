@@ -34,7 +34,12 @@ class PDFAnalyzer:
         s_b = (s_color & 255) / 255.0
         s_flags = span.get("flags", 0)
         s_font_lower = s_font_name.lower()
-        s_bold = bool(s_flags & 16) or ("bold" in s_font_lower) or ("black" in s_font_lower) or ("heavy" in s_font_lower)
+        s_font_clean = s_font_lower.split('+')[-1]  # strip any subset prefix like ABCDEF+
+        s_bold = (
+            bool(s_flags & 16)
+            or any(k in s_font_clean for k in ('bold', 'black', 'heavy', 'semibold', 'demi', 'cmbx', 'w6', 'w7', 'w8', 'w9'))
+            or any(s_font_clean.endswith(k) for k in ('-bd', '-b', '-bold'))
+        )
         s_italic = bool(s_flags & 2) or ("italic" in s_font_lower) or ("oblique" in s_font_lower)
 
         base = page_fonts.get(s_font_name)

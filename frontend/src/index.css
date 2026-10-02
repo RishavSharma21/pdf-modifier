@@ -396,6 +396,38 @@ body {
   transform: scale(0.94);
 }
 
+/* Report Bug — icon-only in the utility island */
+.btn-report-bug {
+  text-decoration: none;
+}
+.btn-report-bug:hover {
+  color: var(--danger) !important;
+  background: var(--danger-light) !important;
+}
+
+/* Report Bug — pill on landing page */
+.btn-report-bug-landing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-med);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.btn-report-bug-landing:hover {
+  background: var(--danger-light);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* Desktop: hide mobile overflow menu anchor */
 .mobile-more-anchor {
   display: none;

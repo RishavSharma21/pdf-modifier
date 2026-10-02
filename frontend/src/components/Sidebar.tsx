@@ -155,6 +155,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [externalPdfDoc, pdfUrl]);
 
+  // Keep the active page thumbnail visible in the sidebar as the user scrolls the PDF
+  useEffect(() => {
+    if (collapsed) return;
+    const thumbEl = document.getElementById(`thumbnail-page-${currentPage}`);
+    if (thumbEl) {
+      thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [currentPage, collapsed]);
+
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="sidebar-header">

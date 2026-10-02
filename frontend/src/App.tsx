@@ -19,8 +19,12 @@ import {
   undoPdfEdit,
   redoPdfEdit,
   getDownloadUrl,
+  startKeepAlivePing,
 } from './services/api';
 import type { SessionInfo, EditableText, ImageObject } from './types/pdf';
+
+// Start keep-alive immediately — prevents Render cold starts on deployed site
+startKeepAlivePing();
 
 export function App() {
   const { showToast } = useToast();

@@ -87,9 +87,22 @@ class PDFAnalyzer:
             return True
         if len(text) == 1 and not text.isalnum() and not text.isspace():
             font = span.get("font", "").lower()
-            if any(k in font for k in ["symbol", "dingbat", "wingding", "cmsy"]):
+            if any(k in font for k in ["symbol", "dingbat", "wingding", "cmsy", "sfrm", "msam", "msbm"]):
+                return True
+            if text in ('\ufffd', '\xb7'):
                 return True
         return False
+
+    @staticmethod
+    def _clean_span_text(raw_text: str, font_name: str = "", is_bullet: bool = False) -> str:
+        if is_bullet:
+            return "•"
+        res = raw_text.replace("\x00", " ").replace("\xad", "-").replace("\u0b1b", " ")
+        if "\ufffd" in res:
+            import re
+            res = re.sub(r'(\S)\ufffd(\S)', r'\1—\2', res)
+            res = res.replace("\ufffd", "—" if any(k in font_name.lower() for k in ["cmr", "cmbx"]) else " ")
+        return res
 
     @staticmethod
     def _is_bold_span(span: dict) -> bool:
@@ -117,7 +130,7 @@ class PDFAnalyzer:
         first_stripped = first_text.strip()
 
         if cls._is_bullet_span(first):
-            expanded_spans.append({**first, "is_bullet": True})
+            expanded_spans.append({**first, "text": "•", "is_bullet": True})
             expanded_spans.extend(spans[1:])
         elif len(first_text) > 1 and first_text.lstrip() and first_text.lstrip()[0] in cls.BULLET_CHARS:
             bullet_char = first_text.lstrip()[0]
@@ -126,7 +139,7 @@ class PDFAnalyzer:
             char_w = first.get("size", 10.0) * 0.7
             b_span = {
                 **first,
-                "text": bullet_char,
+                "text": "•",
                 "bbox": [b_sb[0], b_sb[1], b_sb[0] + char_w, b_sb[3]],
                 "is_bullet": True
             }
@@ -234,7 +247,11 @@ class PDFAnalyzer:
                 for g_idx, group_spans in enumerate(span_groups):
                     group_text = ""
                     for s_i, s in enumerate(group_spans):
-                        t = s.get("text", "").replace("\ufffd", " ").replace("\u0b1b", " ").replace("\x00", " ")
+                        t = self._clean_span_text(
+                            s.get("text", ""),
+                            font_name=s.get("font", ""),
+                            is_bullet=s.get("is_bullet", False)
+                        )
                         if not t:
                             continue
                         if group_text:
@@ -268,7 +285,11 @@ class PDFAnalyzer:
                             width=sb[2] - sb[0], height=sb[3] - sb[1]
                         )
                         run_fi = self._build_span_font_info(span, page_fonts)
-                        clean_span_text = span.get("text", "").replace("\ufffd", " ").replace("\u0b1b", " ").replace("\x00", " ")
+                        clean_span_text = self._clean_span_text(
+                            span.get("text", ""),
+                            font_name=span.get("font", ""),
+                            is_bullet=span.get("is_bullet", False)
+                        )
                         runs.append(TextRun(
                             id=f"{obj_id}-s{s_i}",
                             text=clean_span_text,

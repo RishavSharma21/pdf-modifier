@@ -493,7 +493,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         ul_paint = fitz.Rect(dr.x0 - 0.5, dr.y0 - 0.5, dr.x1 + 0.5, dr.y1 + 0.5)
                         page_fitz.draw_rect(ul_paint, color=None, fill=bg_color, width=0)
 
-                    PAGE_RIGHT_MARGIN = max(page_fitz.rect.width - 36.0, 100.0)
+                    PAGE_RIGHT_MARGIN = max(page_fitz.rect.width - 18.0, 100.0)
                     # Hard cap: replacement text must NEVER exceed the original line's right edge.
                     # Using min() ensures we don't give more room than the original bbox.
                     avail_width = min(
@@ -734,6 +734,11 @@ class TrueContentModificationStrategy(TextModificationStrategy):
 
                     def measure_piece_w(t: str, fn: str, f_obj: Optional[fitz.Font], sz: float) -> float:
                         if f_obj:
+                            if not f_obj.has_glyph(32) and ' ' in t:
+                                words = t.split(' ')
+                                sum_w = sum(f_obj.text_length(w, fontsize=sz) for w in words if w)
+                                nom_space = sz * 0.278
+                                return sum_w + max(len(words) - 1, 0) * nom_space
                             try:
                                 return f_obj.text_length(t, fontsize=sz)
                             except Exception:
@@ -783,28 +788,60 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         })
 
                     # Proportional scaling if line grew beyond available width.
-                    # Scale only when text is clearly wider (>2pt tolerance to avoid micro-rounding).
                     global_scale = 1.0
-                    if total_line_w > avail_width + 2.0 and avail_width > 20:
-                        # Minimum 0.82 — keeps text legible while preventing overflow
-                        global_scale = max(avail_width / total_line_w, 0.82)
+                    if total_line_w > avail_width and avail_width > 20:
+                        # Scale down proportionally with minimum 0.70 to guarantee no overflow
+                        global_scale = max(avail_width / total_line_w, 0.70)
 
                     # 4. Render pieces sequentially along exact baseline
                     curr_x = insertion_x
                     for p in piece_render_info:
                         actual_size = max(p["size"] * global_scale, 5.0)
-                        actual_w = measure_piece_w(p["text"], p["fname"], p["fobj"], actual_size)
                         p_color = p["font"].color if (p["font"] and getattr(p["font"], "color", None)) else font_color
+                        f_has_space = p["fobj"].has_glyph(32) if p["fobj"] else True
 
                         if not p["is_link"]:
-                            page_fitz.insert_text(
-                                fitz.Point(curr_x, baseline_y),
-                                p["text"],
-                                fontsize=actual_size,
-                                fontname=p["fname"],
-                                color=p_color
-                            )
+                            # When a font lacks glyph 32 (e.g. LaTeX CMR10/CMBX10) or when rendering
+                            # a multi-word run into a justified line:
+                            # render word-by-word with exact horizontal offsets. This avoids PyMuPDF
+                            # emitting \x00 characters for spaces and prevents width inflation.
+                            if ' ' in p["text"] and (not f_has_space or (avail_width > 50 and len(piece_render_info) == 1)):
+                                words = p["text"].split(' ')
+                                num_gaps = max(len(words) - 1, 0)
+                                sum_words_w = sum(measure_piece_w(w, p["fname"], p["fobj"], actual_size) for w in words if w)
+                                if num_gaps > 0:
+                                    ideal_space = (avail_width - sum_words_w) / num_gaps
+                                    if actual_size * 0.18 <= ideal_space <= actual_size * 0.45:
+                                        space_w = ideal_space
+                                    else:
+                                        space_w = min(max(ideal_space, actual_size * 0.20), actual_size * 0.33)
+                                else:
+                                    space_w = actual_size * 0.278
+
+                                for idx, w in enumerate(words):
+                                    if w:
+                                        page_fitz.insert_text(
+                                            fitz.Point(curr_x, baseline_y),
+                                            w,
+                                            fontsize=actual_size,
+                                            fontname=p["fname"],
+                                            color=p_color
+                                        )
+                                        curr_x += measure_piece_w(w, p["fname"], p["fobj"], actual_size)
+                                    if idx < num_gaps:
+                                        curr_x += space_w
+                            else:
+                                actual_w = measure_piece_w(p["text"], p["fname"], p["fobj"], actual_size)
+                                page_fitz.insert_text(
+                                    fitz.Point(curr_x, baseline_y),
+                                    p["text"],
+                                    fontsize=actual_size,
+                                    fontname=p["fname"],
+                                    color=p_color
+                                )
+                                curr_x += actual_w
                         else:
+                            actual_w = measure_piece_w(p["text"], p["fname"], p["fobj"], actual_size)
                             link_color = (0.043, 0.404, 0.796) if p_color == (0, 0, 0) else p_color
                             page_fitz.insert_text(
                                 fitz.Point(curr_x, baseline_y),
@@ -837,8 +874,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 })
                             except Exception:
                                 pass
-
-                        curr_x += actual_w
+                            curr_x += actual_w
 
                     # 5. Redraw text underline for normal text if original text was underlined
                     if had_text_underline and text_underline_info and not any(p.get("is_link") for p in piece_render_info):

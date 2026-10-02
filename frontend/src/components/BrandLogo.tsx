@@ -80,10 +80,6 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ size = 26, className = '' 
         d="M14.4 11.8H16.6C17.2627 11.8 17.8 12.3373 17.8 13C17.8 13.6627 17.2627 14.2 16.6 14.2H14.4V11.8Z"
         fill="#ffffff"
       />
-
-      {/* Vector Precision Edit Spark */}
-      <circle cx="18.8" cy="20" r="1.6" fill="#3b82f6" />
-      <circle cx="18.8" cy="20" r="0.8" fill="#ffffff" />
     </svg>
   );
 };

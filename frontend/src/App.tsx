@@ -560,9 +560,14 @@ export function App() {
     color?: string,
     targetTextId?: string,
     boundingBox?: any,
-    origin?: [number, number]
+    origin?: [number, number],
+    pageNumber?: number
   ) => {
     if (!session) return;
+    const targetPage = pageNumber ?? currentPage;
+    if (pageNumber && pageNumber !== currentPage) {
+      setCurrentPage(pageNumber);
+    }
 
     // 1. Optimistic Instant In-Memory Update
     setEditableObjects((prev) =>
@@ -592,7 +597,7 @@ export function App() {
       setIsProcessing(true);
       const res = await editPdfText(
         session.sessionId,
-        currentPage,
+        targetPage,
         originalText,
         newText,
         color,
@@ -603,9 +608,9 @@ export function App() {
 
       if (res.textObjects && res.textObjects.length > 0) {
         setEditableObjects(res.textObjects);
-        pageAnalysisCache.current.set(currentPage, { textObjects: res.textObjects, imageObjects: res.imageObjects || [] });
+        pageAnalysisCache.current.set(targetPage, { textObjects: res.textObjects, imageObjects: res.imageObjects || [] });
       } else {
-        pageAnalysisCache.current.delete(currentPage);
+        pageAnalysisCache.current.delete(targetPage);
       }
       if (res.imageObjects) {
         setImageObjects(res.imageObjects);
@@ -617,10 +622,10 @@ export function App() {
       setPdfRefreshKey((prev) => prev + 1);
     } catch (err: any) {
       showToast(err.message || 'Failed to edit text', 'error');
-      pageAnalysisCache.current.delete(currentPage);
+      pageAnalysisCache.current.delete(targetPage);
       // Re-fetch page data on error to revert optimistic state
       try {
-        const pageRes = await analyzePage(session.sessionId, currentPage);
+        const pageRes = await analyzePage(session.sessionId, targetPage);
         setEditableObjects(pageRes.textObjects || []);
         setImageObjects(pageRes.imageObjects || []);
       } catch (e) {}
@@ -630,12 +635,13 @@ export function App() {
   };
 
   // Handle deleting an image/logo
-  const handleDeleteImage = async (boundingBox: any) => {
+  const handleDeleteImage = async (boundingBox: any, pageNumber?: number) => {
     if (!session) return;
+    const targetPage = pageNumber ?? currentPage;
     try {
       setIsProcessing(true);
-      const res = await deletePdfImage(session.sessionId, currentPage, boundingBox);
-      pageAnalysisCache.current.delete(currentPage);
+      const res = await deletePdfImage(session.sessionId, targetPage, boundingBox);
+      pageAnalysisCache.current.delete(targetPage);
       if (res.textObjects) setEditableObjects(res.textObjects);
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
@@ -848,7 +854,7 @@ export function App() {
             />
 
             <PdfViewer
-              key={`${session.sessionId}-${pdfRefreshKey}`}
+              key={session.sessionId}
               pdfUrl={pdfUrl}
               pdfDoc={sharedPdfDoc}
               onPdfDocLoaded={(doc) => setSharedPdfDoc(doc)}
@@ -913,7 +919,7 @@ export function App() {
                 currentPage={currentPage}
                 onMatchChange={handleMatchChange}
                 onReplaceOne={async (obj, newText) => {
-                  await handleCommitEdit(obj.text, newText, undefined, obj.id, obj.boundingBox, obj.origin);
+                  await handleCommitEdit(obj.text, newText, undefined, obj.id, obj.boundingBox, obj.origin, obj.pageNumber || currentPage);
                 }}
               />
             )}

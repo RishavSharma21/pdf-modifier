@@ -604,7 +604,7 @@ interface PdfViewerProps {
     origin?: [number, number],
     pageNumber?: number
   ) => Promise<void>;
-  onDeleteImage?: (boundingBox: any) => Promise<void>;
+  onDeleteImage?: (boundingBox: any, pageNumber?: number) => Promise<void>;
   onReplaceImage?: (boundingBox: any, file: File) => Promise<void>;
   onAdjustImage?: (
     originalBoundingBox: any,
@@ -679,6 +679,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [activeSnapshotUrl, setActiveSnapshotUrl] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
 
+  // Preserve scroll position across PDF reloads
+  const savedScrollTopRef = useRef<number>(0);
+  useEffect(() => {
+    const viewport = document.getElementById('canvas-viewport');
+    if (viewport && viewport.scrollTop > 0) {
+      savedScrollTopRef.current = viewport.scrollTop;
+    }
+  }, [pdfUrl]);
+
   // Load PDF Document if not provided by parent
   useEffect(() => {
     if (externalPdfDoc) return;
@@ -694,6 +703,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         if (!isCancelled) {
           setPdfDoc(doc);
           onPdfDocLoaded?.(doc);
+          requestAnimationFrame(() => {
+            const viewport = document.getElementById('canvas-viewport');
+            if (viewport && savedScrollTopRef.current > 0 && Math.abs(viewport.scrollTop - savedScrollTopRef.current) > 30) {
+              viewport.scrollTop = savedScrollTopRef.current;
+            }
+          });
         }
       } catch (err) {
         console.error('Error loading PDF in PDF.js:', err);
@@ -705,6 +720,22 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       isCancelled = true;
     };
   }, [externalPdfDoc, pdfUrl, onPdfDocLoaded]);
+
+  // Ensure viewport stays on currentPage if currentPage > 1
+  useEffect(() => {
+    if (currentPage > 1) {
+      const timer = setTimeout(() => {
+        const viewport = document.getElementById('canvas-viewport');
+        if (viewport && viewport.scrollTop === 0) {
+          const pageEl = document.getElementById(`pdf-page-${currentPage}`);
+          if (pageEl) {
+            pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+          }
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [currentPage, pdfDoc]);
 
   // Focus inline input on select (Desktop only — on mobile the sheet handles focus)
   useEffect(() => {
@@ -997,7 +1028,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const handleDeleteSelectedImage = async () => {
     if (!selectedImage || !onDeleteImage) return;
     try {
-      await onDeleteImage(selectedImage.boundingBox);
+      const pageNum = (selectedImage as any).pageNumber || currentPage;
+      await onDeleteImage(selectedImage.boundingBox, pageNum);
       setSelectedImage(null);
       setAdjustmentState(null);
       setActiveSnapshotUrl(null);

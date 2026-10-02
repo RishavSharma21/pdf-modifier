@@ -106,20 +106,6 @@ def create_brand_icon(size: int) -> Image.Image:
         fill=(255, 255, 255, 255)
     )
 
-    # Vector Precision Edit Node / Accent Spark (cyan-blue dot at bottom-right of P)
-    dot_x = int(canvas_size * 0.58)
-    dot_y = int(canvas_size * 0.64)
-    dot_r = int(canvas_size * 0.055)
-    draw.ellipse(
-        [dot_x - dot_r, dot_y - dot_r, dot_x + dot_r, dot_y + dot_r],
-        fill=(59, 130, 246, 255) # #3b82f6
-    )
-    inner_dot_r = max(dot_r // 2, 1)
-    draw.ellipse(
-        [dot_x - inner_dot_r, dot_y - inner_dot_r, dot_x + inner_dot_r, dot_y + inner_dot_r],
-        fill=(255, 255, 255, 255)
-    )
-
     # Resize down with LANCZOS high-quality resampling
     return img.resize((size, size), Image.Resampling.LANCZOS)
 

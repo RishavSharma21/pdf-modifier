@@ -37,3 +37,4 @@ test-pdfs/*.png
 
 # Debug image dumps
 *.png
+!frontend/public/*.png

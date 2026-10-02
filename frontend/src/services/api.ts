@@ -12,7 +12,7 @@ export const getApiBase = (): string => {
       return `http://${host}:8000/api/pdf`;
     }
     // On Vercel (or any deployed host), use the Render backend
-    return 'https://pdf-modifier-backend.onrender.com/api/pdf';
+    return 'https://pdf-modifier-mdag.onrender.com/api/pdf';
   }
   return 'http://localhost:8000/api/pdf';
 };

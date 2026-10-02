@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pdf-modifier-backend
+    name: pdf-modifier-mdag
     env: python
     plan: free
     region: oregon

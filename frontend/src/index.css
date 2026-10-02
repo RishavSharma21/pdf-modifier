@@ -5190,4 +5190,87 @@ html.theme-transitioning .find-replace-card {
   }
 }
 
+/* ==========================================================================
+   Google Chrome Style Pull-to-Refresh Indicator (Mobile)
+   ========================================================================== */
+.ptr-container {
+  position: fixed;
+  top: -48px;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  z-index: 99999;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, opacity;
+}
+
+.ptr-container.is-releasing {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease-out;
+}
+
+.ptr-container.is-dragging {
+  transition: none;
+}
+
+.ptr-chip {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.24), 0 1px 4px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+[data-theme="dark"] .ptr-chip {
+  background: #1c222c;
+  color: #3b82f6;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.ptr-arrow-svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  transform-origin: center center;
+  transition: transform 0.05s linear;
+}
+
+.ptr-spinner-svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  animation: ptrSpin 0.75s linear infinite;
+}
+
+.ptr-spinner-track {
+  stroke: rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="dark"] .ptr-spinner-track {
+  stroke: rgba(59, 130, 246, 0.25);
+}
+
+.ptr-spinner-head {
+  stroke: currentColor;
+  stroke-linecap: round;
+}
+
+@keyframes ptrSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+
 

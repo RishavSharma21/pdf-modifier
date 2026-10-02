@@ -6,6 +6,7 @@ import { Dropzone } from './components/Dropzone';
 import { PdfViewer } from './components/PdfViewer';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
+import { PullToRefresh } from './components/PullToRefresh';
 import { useToast } from './components/Toast';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
@@ -924,6 +925,8 @@ export function App() {
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
       />
+
+      <PullToRefresh disabled={isEditingActive || isFindReplaceOpen || isShortcutsOpen} />
     </div>
   );
 }

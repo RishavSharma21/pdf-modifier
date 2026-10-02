@@ -208,7 +208,13 @@ class PDFAnalyzer:
 
         text_page = page.get_text(
             "dict",
-            flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE
+            flags=fitz.TEXT_PRESERVE_LIGATURES
+            # Note: TEXT_PRESERVE_WHITESPACE is intentionally omitted.
+            # On Linux, some embedded fonts (e.g. LaTeX CMR10/CMBX10) don't
+            # include a ToUnicode mapping for glyph 32 (space), causing
+            # PyMuPDF to emit \ufffd instead of a space character.
+            # We rely on the positional gap analysis in the extraction loop
+            # below, which is platform-agnostic and more robust.
         )
 
         editable_objects: List[EditableText] = []

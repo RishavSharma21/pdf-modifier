@@ -797,8 +797,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     };
   }, [pages, currentPage, onPageChange]);
 
+  // Active in-place editing state
+  const isColorModifiedRef = useRef<boolean>(false);
+
   // Start in-place edit
   const handleStartEdit = (obj: EditableText) => {
+    isColorModifiedRef.current = false;
     setActiveObj(obj);
     setActiveText(obj.text);
     const origRgb = obj.font.color || [0, 0, 0];
@@ -824,7 +828,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     if (!activeObj) return;
     const origText = activeObj.text;
     const newText = activeText;
-    const color = activeColor;
+    const color = isColorModifiedRef.current ? activeColor : undefined;
     const targetId = activeObj.id;
     const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
     const origin = activeObj.origin;
@@ -1072,7 +1076,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         <InlineEditorBar
           textObject={activeObj}
           selectedColor={activeColor}
-          onSelectColor={(hex) => setActiveColor(hex)}
+          onSelectColor={(hex) => {
+            isColorModifiedRef.current = true;
+            setActiveColor(hex);
+          }}
           onCommit={handleCommit}
           onCancel={() => {
             setActiveObj(null);
@@ -1090,7 +1097,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           activeText={activeText}
           onChangeText={setActiveText}
           selectedColor={activeColor}
-          onSelectColor={(hex) => setActiveColor(hex)}
+          onSelectColor={(hex) => {
+            isColorModifiedRef.current = true;
+            setActiveColor(hex);
+          }}
           onCommit={handleCommit}
           onCancel={() => {
             setActiveObj(null);

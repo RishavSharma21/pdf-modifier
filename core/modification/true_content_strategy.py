@@ -514,26 +514,58 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 return c_name, c_obj, f_size * c_mult
 
                         # 1. Attempt to reuse matching embedded font directly from the PDF page
-                        # This preserves 100% of the original document typography (e.g. Rubik, Inter, Helvetica)
+                        # Rank by exact name, family, and weight (normal vs bold/medium) to avoid bolding normal text
                         try:
-                            for fx in page_fitz.get_fonts():
-                                xref = fx[0]
+                            page_fonts = page_fitz.get_fonts()
+                            def score_embedded_font(fx) -> int:
                                 emb_name = (fx[3] or "").lower()
                                 emb_clean = emb_name.split('+')[-1]
-                                name_match = (
-                                    f_clean in emb_clean or
-                                    emb_clean in f_clean or
-                                    any(k in emb_clean for k in f_clean.split('-') if len(k) > 2)
-                                )
-                                if name_match:
-                                    font_buffer = doc.extract_font(xref)[3]
-                                    if font_buffer and len(font_buffer) > 0:
-                                        test_font = fitz.Font(fontbuffer=font_buffer)
-                                        if not chars_to_check or all(test_font.has_glyph(ord(c)) for c in chars_to_check):
-                                            font_alias = f"F_EMB_{xref}"
-                                            page_fitz.insert_font(fontname=font_alias, fontbuffer=font_buffer)
-                                            loaded_fonts[cache_key] = (font_alias, test_font, 1.0)
-                                            return font_alias, test_font, f_size
+                                score = 0
+                                if emb_clean == f_clean:
+                                    score += 200
+                                base_target = f_clean.split('-')[0].split('_')[0]
+                                base_emb = emb_clean.split('-')[0].split('_')[0]
+                                if base_target == base_emb:
+                                    score += 100
+                                elif base_target in base_emb or base_emb in base_target:
+                                    score += 50
+                                else:
+                                    return -1  # Not a family match
+                                
+                                is_emb_bold = any(k in emb_clean for k in ['bold', 'medium', 'heavy', 'black', 'semibold', 'demi', 'w5', 'w6', 'w7', 'w8', 'w9', '500', '600', '700'])
+                                if f_bold:
+                                    if is_emb_bold: score += 50
+                                    else: score -= 20
+                                else:
+                                    if not is_emb_bold: score += 50
+                                    else: score -= 40
+                                
+                                is_emb_italic = ('italic' in emb_clean or 'oblique' in emb_clean)
+                                if f_italic:
+                                    if is_emb_italic: score += 30
+                                    else: score -= 15
+                                else:
+                                    if not is_emb_italic: score += 30
+                                    else: score -= 30
+                                return score
+
+                            scored_fonts = []
+                            for fx in page_fonts:
+                                s = score_embedded_font(fx)
+                                if s > 0:
+                                    scored_fonts.append((s, fx))
+                            scored_fonts.sort(key=lambda x: x[0], reverse=True)
+
+                            for _, fx in scored_fonts:
+                                xref = fx[0]
+                                font_buffer = doc.extract_font(xref)[3]
+                                if font_buffer and len(font_buffer) > 0:
+                                    test_font = fitz.Font(fontbuffer=font_buffer)
+                                    if not chars_to_check or all(test_font.has_glyph(ord(c)) for c in chars_to_check):
+                                        font_alias = f"F_EMB_{xref}"
+                                        page_fitz.insert_font(fontname=font_alias, fontbuffer=font_buffer)
+                                        loaded_fonts[cache_key] = (font_alias, test_font, 1.0)
+                                        return font_alias, test_font, f_size
                         except Exception:
                             pass
 

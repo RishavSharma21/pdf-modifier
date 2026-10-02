@@ -813,12 +813,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setSelectedImage(null);
     setAdjustmentState(null);
 
-    // On mobile, scroll clicked line into upper/center view so it is not obscured by bottom drawer
+    // On small screens, keep line visible without jumping or centering the viewport
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
       setTimeout(() => {
         const el = document.getElementById(`editable-${obj.id}`);
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
       }, 70);
     }

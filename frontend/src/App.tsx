@@ -553,6 +553,25 @@ export function App() {
     });
   }, []);
 
+  // Seamless Background PDF Refresh: loads the updated PDF document in the background
+  // and swaps sharedPdfDoc directly without clearing it to null.
+  // This completely stops screen, canvas, and sidebar flickering!
+  const refreshPdfDoc = useCallback(async (sessionId: string) => {
+    try {
+      const nextKey = Date.now();
+      const freshDoc = await pdfjsLib.getDocument({
+        url: `${getDownloadUrl(sessionId)}&v=${nextKey}`,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+        cMapPacked: true,
+      }).promise;
+      setSharedPdfDoc(freshDoc);
+      setPdfRefreshKey((prev) => prev + 1);
+    } catch (e) {
+      console.warn('Silent PDF doc reload note:', e);
+      setPdfRefreshKey((prev) => prev + 1);
+    }
+  }, []);
+
   // Handle edit commit with Optimistic Update
   const handleCommitEdit = async (
     originalText: string,
@@ -618,8 +637,7 @@ export function App() {
 
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
-      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
-      setPdfRefreshKey((prev) => prev + 1);
+      await refreshPdfDoc(session.sessionId);
     } catch (err: any) {
       showToast(err.message || 'Failed to edit text', 'error');
       pageAnalysisCache.current.delete(targetPage);
@@ -646,8 +664,7 @@ export function App() {
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
-      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
-      setPdfRefreshKey((prev) => prev + 1);
+      await refreshPdfDoc(session.sessionId);
     } catch (err: any) {
       showToast(err.message || 'Failed to delete image', 'error');
     } finally {
@@ -680,8 +697,7 @@ export function App() {
       if (res.imageObjects) setImageObjects(res.imageObjects);
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
-      setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
-      setPdfRefreshKey((prev) => prev + 1);
+      await refreshPdfDoc(session.sessionId);
       showToast('Logo updated successfully!', 'success');
     } catch (err: any) {
       const msg = (typeof err?.message === 'string' ? err.message : null) || 'Failed to adjust logo';
@@ -702,8 +718,7 @@ export function App() {
       if (res.success) {
         setEditCount((prev) => Math.max(0, prev - 1));
         setRedoCount((prev) => prev + 1);
-        setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
-        setPdfRefreshKey((prev) => prev + 1);
+        await refreshPdfDoc(session.sessionId);
         // Re-fetch page analysis so editableObjects reflects the reverted state
         // This also keeps Find & Replace search index in sync after undo
         try {
@@ -728,8 +743,7 @@ export function App() {
       if (res.success) {
         setEditCount((prev) => prev + 1);
         setRedoCount((prev) => Math.max(0, prev - 1));
-        setSharedPdfDoc(null); // clear cached doc so viewer re-fetches fresh PDF
-        setPdfRefreshKey((prev) => prev + 1);
+        await refreshPdfDoc(session.sessionId);
         // Re-fetch page analysis so editableObjects reflects the re-applied state
         try {
           const pageRes = await analyzePage(session.sessionId, currentPage);

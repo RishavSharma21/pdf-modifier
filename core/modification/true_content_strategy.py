@@ -99,8 +99,13 @@ class TrueContentModificationStrategy(TextModificationStrategy):
         operation: EditOperation
     ) -> ModificationResult:
         """Surgically modify the target text in the PDF content stream."""
-        orig_text = operation.original_text
-        new_text = operation.new_text
+        def _clean_str(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return s.replace('\ufffd', ' ').replace('\u0b1b', ' ').replace('\x00', ' ')
+
+        orig_text = _clean_str(operation.original_text)
+        new_text = _clean_str(operation.new_text)
         target_page_num = operation.page_number  # 1-indexed
 
         if not orig_text:
@@ -507,7 +512,12 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             f_italic = True
 
                         cache_key = f"{f_clean}__w{f_bold}__i{f_italic}"
-                        chars_to_check = [c for c in (text_sample or sub_new) if ord(c) > 32]
+                        sample_str = (text_sample or sub_new or "")
+                        # CRITICAL: Include space (ASCII 32) if the sample text contains spaces!
+                        # Embedded LaTeX fonts (like CMR10, CMBX) lack an ASCII 32 space glyph (has_glyph(32) == False).
+                        # If space is ignored, the embedded font is erroneously selected, but PyMuPDF cannot render
+                        # spaces with it, causing PyMuPDF to insert missing glyphs (mapped to \ufffd diamond characters).
+                        chars_to_check = [c for c in set(sample_str) if ord(c) > 32 or (ord(c) == 32 and ' ' in sample_str)]
                         if cache_key in loaded_fonts:
                             c_name, c_obj, c_mult = loaded_fonts[cache_key]
                             if not chars_to_check or (c_obj and all(c_obj.has_glyph(ord(c)) for c in chars_to_check)):
@@ -581,7 +591,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             elif f_bold: f_cand = 'arialbd.ttf'
                             elif f_italic: f_cand = 'ariali.ttf'
                             else: f_cand = 'arial.ttf'
-                        elif 'times' in f_clean or 'liberationserif' in f_clean or 'roman' in f_clean:
+                        elif any(k in f_clean for k in ['times', 'liberationserif', 'roman', 'cmr', 'cmbx', 'computermodern', 'latinmodern', 'ptserif', 'cambria']):
                             if f_bold and f_italic: f_cand = 'timesbi.ttf'
                             elif f_bold: f_cand = 'timesbd.ttf'
                             elif f_italic: f_cand = 'timesi.ttf'
@@ -694,7 +704,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
 
                         if not matched_file:
                             # Only use Base-14 PDF fonts for pure ASCII where no TrueType font is found
-                            if 'times' in f_clean or 'serif' in f_clean or 'roman' in f_clean:
+                            if any(k in f_clean for k in ['times', 'serif', 'roman', 'cmr', 'cmbx', 'computermodern', 'latinmodern']):
                                 if f_bold and f_italic: fname = "tibi"
                                 elif f_bold: fname = "tibo"
                                 elif f_italic: fname = "tiit"

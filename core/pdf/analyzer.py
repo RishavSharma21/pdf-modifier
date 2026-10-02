@@ -223,7 +223,7 @@ class PDFAnalyzer:
                 for g_idx, group_spans in enumerate(span_groups):
                     group_text = ""
                     for s_i, s in enumerate(group_spans):
-                        t = s.get("text", "")
+                        t = s.get("text", "").replace("\ufffd", " ").replace("\u0b1b", " ").replace("\x00", " ")
                         if not t:
                             continue
                         if group_text:
@@ -257,9 +257,10 @@ class PDFAnalyzer:
                             width=sb[2] - sb[0], height=sb[3] - sb[1]
                         )
                         run_fi = self._build_span_font_info(span, page_fonts)
+                        clean_span_text = span.get("text", "").replace("\ufffd", " ").replace("\u0b1b", " ").replace("\x00", " ")
                         runs.append(TextRun(
                             id=f"{obj_id}-s{s_i}",
-                            text=span.get("text", ""),
+                            text=clean_span_text,
                             bounding_box=sp_bbox,
                             font=run_fi,
                             origin=(float(sp_origin[0]), float(sp_origin[1]))

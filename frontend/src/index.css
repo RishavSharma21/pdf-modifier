@@ -179,21 +179,17 @@ body {
 }
 
 .brand-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  background: var(--accent);
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   flex-shrink: 0;
-  transition: background-color 0.18s ease, transform 0.18s ease;
+  transition: transform 0.18s ease;
 }
 
 .brand.clickable-brand:hover .brand-logo {
-  background: var(--accent-hover);
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .brand-title {

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FileText, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical } from 'lucide-react';
+import { Download, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
   filename: string | null;
@@ -55,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
         aria-label="PDF Modifier home"
       >
         <div className="brand-logo">
-          <FileText size={16} />
+          <BrandLogo size={24} />
         </div>
         <span className="brand-title">PDF Modifier</span>
       </div>

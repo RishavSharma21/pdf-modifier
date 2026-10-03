@@ -405,22 +405,21 @@ body {
   background: var(--danger-light) !important;
 }
 
-/* Report Bug — pill on landing page */
+/* Report Bug — icon on landing page */
 .btn-report-bug-landing {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 11px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: var(--r-sm);
   border: 1px solid var(--border-med);
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
   transition: all 0.15s ease;
-  white-space: nowrap;
 }
 .btn-report-bug-landing:hover {
   background: var(--danger-light);

@@ -138,14 +138,13 @@ export const Header: React.FC<HeaderProps> = ({
               rel="noopener noreferrer"
               id="btn-report-bug"
               aria-label="Report a bug"
-              title="Report a bug"
             >
               <Bug size={14} />
             </a>
           </div>
         )}
 
-        {/* Report Bug on landing page too */}
+        {/* Report Bug on landing page too (icon-only, minimal) */}
         {!hasDocument && (
           <a
             className="btn-report-bug-landing"
@@ -156,7 +155,6 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="Report a bug"
           >
             <Bug size={14} />
-            <span>Report Bug</span>
           </a>
         )}
 

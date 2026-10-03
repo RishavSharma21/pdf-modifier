@@ -2056,43 +2056,49 @@ body {
   flex-shrink: 0;
 }
 
-/* Small, Tasteful Landing Footer */
+/* 4. Muted Reassurance Note Below Drop Row */
+.landing-no-login-note {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  text-align: center;
+  margin: 14px 0 0;
+  letter-spacing: -0.01em;
+  user-select: none;
+  opacity: 0.85;
+}
+
+[data-theme="dark"] .landing-no-login-note {
+  color: #71717a;
+}
+
+/* Minimal Landing Footer */
 .landing-footer {
   margin-top: auto;
-  padding: 12px 20px 14px;
+  padding: 14px 20px 16px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   text-align: center;
   user-select: none;
   z-index: 5;
 }
 
-.footer-text {
-  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-  font-size: 12px;
-  color: var(--text-3);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.footer-dot {
-  color: var(--border-strong);
-  margin: 0 4px;
-}
-
 .footer-privacy {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 5.5px;
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  font-size: 11.5px;
   color: var(--text-3);
-  opacity: 0.85;
+  letter-spacing: -0.01em;
+  opacity: 0.8;
 }
 
 .footer-icon {
   color: #10b981;
+  opacity: 0.85;
   flex-shrink: 0;
 }
 
@@ -4718,6 +4724,11 @@ html.theme-transitioning .find-replace-card {
     margin-left: auto;
     margin-right: auto;
     color: var(--text-2);
+  }
+
+  .landing-no-login-note {
+    font-size: 12px;
+    margin-top: 10px;
   }
 
   .landing-action-group {

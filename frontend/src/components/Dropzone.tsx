@@ -193,18 +193,20 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelected, isLoading })
                   <span>Try demo PDF</span>
                 </button>
               </div>
+
+              {/* Muted, subtle reassurance */}
+              <p className="landing-no-login-note" id="landing-no-login-note">
+                We hate login screens too.
+              </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Small, Tasteful Footer */}
+      {/* Minimal Footer */}
       <footer className="landing-footer">
-        <span className="footer-text">
-          PDF Modifier <span className="footer-dot">·</span> Your private in-place PDF editor
-        </span>
         <span className="footer-privacy">
-          <ShieldCheck size={11} className="footer-icon" />
+          <ShieldCheck size={12} className="footer-icon" />
           <span>Files stay private on your device</span>
         </span>
       </footer>

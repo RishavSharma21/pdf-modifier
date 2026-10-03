@@ -39,3 +39,4 @@ test-pdfs/*.png
 *.png
 !frontend/public/*.png
 scratch/
+*.zip

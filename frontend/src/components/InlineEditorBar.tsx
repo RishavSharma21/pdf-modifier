@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { Type, Trash2, Loader2, Palette } from 'lucide-react';
+import React, { useState } from 'react';
+import { Type, Trash2, Loader2, ChevronDown } from 'lucide-react';
 import type { EditableText } from '../types/pdf';
+import { ColorPickerPopover } from './ColorPickerPopover';
 
 interface InlineEditorBarProps {
   textObject: EditableText;
@@ -21,7 +22,7 @@ export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
   onDeleteLine,
   isSubmitting = false,
 }) => {
-  const colorInputRef = useRef<HTMLInputElement>(null);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState<boolean>(false);
   const origColorRgb = textObject.font.color || [0, 0, 0];
   const origColorHex = `#${Math.round(origColorRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origColorRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origColorRgb[2] * 255).toString(16).padStart(2, '0')}`;
   const currentColor = selectedColor || origColorHex;
@@ -38,23 +39,31 @@ export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
           <Type size={15} />
         </div>
 
-        {/* Color Swatch Picker */}
-        <div
-          className="subbar-color-group"
-          onClick={() => colorInputRef.current?.click()}
-          title={`Text Color: ${currentColor} (Click to change)`}
-        >
-          <span
-            className="subbar-color-preview"
-            style={{ backgroundColor: currentColor }}
-          />
-          <Palette size={13} className="subbar-color-icon" />
-          <input
-            ref={colorInputRef}
-            type="color"
-            value={currentColor}
-            onChange={(e) => onSelectColor(e.target.value)}
-            className="subbar-color-hidden-input"
+        {/* Professional Color Swatch Picker */}
+        <div className="subbar-color-anchor">
+          <button
+            type="button"
+            className={`subbar-color-group ${isColorPickerOpen ? 'active' : ''}`}
+            onClick={() => setIsColorPickerOpen((prev) => !prev)}
+            title={`Text Color: ${currentColor} (Click to choose color)`}
+            id="btn-subbar-color-picker"
+          >
+            <span
+              className="subbar-color-preview"
+              style={{ backgroundColor: currentColor }}
+            />
+            <span className="subbar-color-hex-label">{currentColor.toUpperCase()}</span>
+            <ChevronDown size={12} className={`subbar-color-chevron ${isColorPickerOpen ? 'open' : ''}`} />
+          </button>
+
+          <ColorPickerPopover
+            currentColor={currentColor}
+            originalColor={origColorHex}
+            onSelectColor={(hex) => {
+              onSelectColor(hex);
+            }}
+            isOpen={isColorPickerOpen}
+            onClose={() => setIsColorPickerOpen(false)}
           />
         </div>
 

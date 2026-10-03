@@ -1841,32 +1841,6 @@ body {
   transform: scale(0.985);
 }
 
-.landing-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-2);
-  letter-spacing: 0.01em;
-  margin-bottom: 2px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  user-select: none;
-}
-
-.landing-badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
-  flex-shrink: 0;
-}
-
 .landing-title {
   font-family: 'Newsreader', Georgia, -apple-system, serif;
   font-optical-sizing: auto;

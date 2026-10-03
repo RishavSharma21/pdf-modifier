@@ -136,15 +136,11 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelected, isLoading })
       <div className="landing-content">
         {/* Balanced, Confident Headline */}
         <div className="landing-hero">
-          <div className="landing-badge">
-            <span className="landing-badge-dot" />
-            <span>Zero Sign-Up · 100% Free · No Watermarks</span>
-          </div>
           <h1 className="landing-title">
-            We hate login screens too.<br className="title-break" /> Just drop your PDF and edit.
+            Edit PDF text.<br className="title-break" /> Keep the original.
           </h1>
           <p className="landing-subtitle">
-            Direct in-place text editing with zero friction. No accounts, no passwords, no email harvesting—exact fonts and layout preserved.
+            Direct in-place vector editing. Exact fonts and layouts preserved.
           </p>
         </div>
 

@@ -4,11 +4,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { InlineEditorBar } from './InlineEditorBar';
-import { InlineTextInsertBar } from './InlineTextInsertBar';
+import { InlineTextEditor } from './InlineTextEditor';
 import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
-import { MobileTextEditorSheet } from './MobileTextEditorSheet';
-import { MobileTextInsertSheet } from './MobileTextInsertSheet';
 import { Image as ImageIcon, Type } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -39,26 +37,6 @@ const getFontTypography = (font: any) => {
     fontWeight: isBold ? 700 : 400,
     fontStyle: (isItalic ? 'italic' : 'normal') as 'italic' | 'normal',
   };
-};
-
-const measureTextWidth = (
-  text: string,
-  font: any,
-  pxSize: number,
-  customFamily?: string
-): number => {
-  if (!text) return 0;
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return Math.ceil(text.length * pxSize * 0.6);
-  const typo = getFontTypography(font || {});
-  const family = customFamily
-    ? customFamily.split(',')[0].replace(/['"]/g, '').trim()
-    : typo.family;
-  const isItalic = typo.fontStyle === 'italic';
-  const isBold = typo.fontWeight >= 700;
-  ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${pxSize}px ${family}`;
-  return Math.ceil(ctx.measureText(text).width);
 };
 
 // Word-level search highlight calculator
@@ -130,23 +108,18 @@ interface PdfPageItemProps {
   activeObj: EditableText | null;
   activeText: string;
   activeColor: string;
-  activeBgColor: string;
   selectedImage: ImageObject | null;
   adjustmentState: ImageAdjustmentState | null;
   activeSnapshotUrl: string | null;
   activeMatchKey: string | null;
   allSearchMatchIds?: string[];
   searchQuery?: string;
-  inputRef: React.RefObject<HTMLInputElement | null>;
   onStartEdit: (obj: EditableText) => void;
-  setActiveText: (val: string) => void;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onSelectImageWithSnapshot: (img: ImageObject, snapshotUrl: string | null) => void;
   onPointerDownImage: (
     e: React.PointerEvent,
     type: 'move' | 'nw' | 'ne' | 'se' | 'sw'
   ) => void;
-  isMobile?: boolean;
   isAddTextMode?: boolean;
   isUnderlined?: boolean;
   activeFontSize?: number;
@@ -164,9 +137,21 @@ interface PdfPageItemProps {
   } | null;
   modifiedPage?: number | null;
   onNewTextBoxRequest?: (x: number, y: number, pageNum: number) => void;
-  onUpdatePendingText?: (text: string) => void;
-  onCommitPendingText?: () => void;
+  onCommitPendingText?: (overrideText?: string) => void;
   onCancelPendingText?: () => void;
+  onCommitEdit?: (newText: string) => void;
+  onCancelEdit?: () => void;
+  onDeleteLine?: () => void;
+  onRedactLine?: () => void;
+  onColorChange?: (hex: string) => void;
+  onFontSizeChange?: (size: number) => void;
+  onFontFamilyChange?: (fam: string) => void;
+  onToggleUnderline?: () => void;
+  onUpdatePendingColor?: (color: string) => void;
+  onUpdatePendingFontSize?: (size: number) => void;
+  onUpdatePendingFontFamily?: (family: string) => void;
+  onTogglePendingBold?: () => void;
+  onTogglePendingUnderline?: () => void;
 }
 
 const PdfPageItem: React.FC<PdfPageItemProps> = ({
@@ -180,7 +165,6 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   activeObj,
   activeText,
   activeColor,
-  activeBgColor,
   activeFontSize,
   activeFontFamily,
   selectedImage,
@@ -189,21 +173,29 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   activeMatchKey,
   allSearchMatchIds,
   searchQuery,
-  inputRef,
   onStartEdit,
-  setActiveText,
-  handleKeyDown,
   onSelectImageWithSnapshot,
   onPointerDownImage,
-  isMobile = false,
   isAddTextMode = false,
   isUnderlined = false,
   pendingInsert,
   modifiedPage,
   onNewTextBoxRequest,
-  onUpdatePendingText,
   onCommitPendingText,
   onCancelPendingText,
+  onCommitEdit,
+  onCancelEdit,
+  onDeleteLine,
+  onRedactLine,
+  onColorChange,
+  onFontSizeChange,
+  onFontFamilyChange,
+  onToggleUnderline,
+  onUpdatePendingColor,
+  onUpdatePendingFontSize,
+  onUpdatePendingFontFamily,
+  onTogglePendingBold,
+  onTogglePendingUnderline,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -625,96 +617,39 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         const bboxHeight = bbox.height * scale;
 
         if (isEditing) {
-          if (isMobile) {
-            return (
-              <div
-                key={obj.id}
-                className="active-mobile-target-highlight"
-                style={{
-                  position: 'absolute',
-                  left: `${bboxLeft}px`,
-                  top: `${bboxTop}px`,
-                  width: `${Math.max(bboxWidth, 24)}px`,
-                  height: `${Math.max(bboxHeight, 16)}px`,
-                  zIndex: 40,
-                }}
-                id={`editable-${obj.id}`}
-              />
-            );
-          }
-
           const origRgb = obj.font.color || [0, 0, 0];
           const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;
-          const activeColorHex = activeColor || origHex;
-          const typo = getFontTypography(obj.font);
-          const baseSize = (activeFontSize && activeFontSize > 0) ? activeFontSize : (obj.font?.size || 10);
-          const fontSizePx = Math.max(baseSize * scale, 1);
-
-          const isFillLine = /__/.test(obj.text) || isUnderlined || /^(signature|name|date|title|by):\s*/i.test(obj.text);
-
-          // Measure accurate text width in browser canvas
-          const measuredTextW = measureTextWidth(activeText, obj.font, fontSizePx, activeFontFamily);
-
-          // Generous safety buffer for horizontal padding, borders, caret, and browser font-metric variances:
-          // - 1.5px border left + right = 3px
-          // - 4px padding left + right = 8px
-          // - Caret & italic overhang & browser font differences = 10-18px
-          // Giving at least 22px (or ~1.1x fontSizePx) guarantees the last word/character is NEVER cut off.
-          const safetyBuffer = Math.max(22, Math.round(fontSizePx * 1.1));
-          const textContentWidth = Math.max(bboxWidth, measuredTextW);
-          const editorWidth = isFillLine
-            ? Math.max(bboxWidth + safetyBuffer, 140 * scale)
-            : textContentWidth + safetyBuffer;
-
-          // Vertical height & alignment:
-          // Ensure enough height so ascenders, descenders (g, j, p, q, y) and borders never get clipped.
-          const editorHeight = Math.max(bboxHeight, Math.round(fontSizePx * 1.3) + 4);
-          const heightDiff = editorHeight - bboxHeight;
-          const editorTop = heightDiff > 0 ? bboxTop - Math.round(heightDiff / 2) : bboxTop;
+          const curColor = activeColor || origHex;
 
           return (
             <div
               key={obj.id}
-              className="active-inline-editor-wrapper"
               style={{
                 position: 'absolute',
                 left: `${bboxLeft}px`,
-                top: `${editorTop}px`,
-                width: `${editorWidth}px`,
-                height: `${editorHeight}px`,
-                zIndex: 40,
-                borderBottom: isFillLine ? '1.5px solid #475569' : undefined,
+                top: `${bboxTop}px`,
+                zIndex: 60,
               }}
-              onClick={(e) => e.stopPropagation()}
             >
-              <input
-                ref={inputRef}
-                autoFocus
-                type="text"
-                className="inline-wysiwyg-input"
-                value={activeText}
-                onChange={(e) => setActiveText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={(e) => {
-                  e.currentTarget.scrollLeft = 0;
-                }}
-                style={{
-                  fontSize: `${fontSizePx}px`,
-                  fontFamily: activeFontFamily
-                    ? activeFontFamily.split(',')[0].replace(/['"]/g, '').trim()
-                    : typo.family,
-                  fontWeight: typo.fontWeight,
-                  fontStyle: typo.fontStyle,
-                  textDecoration: 'none',
-                  color: activeColorHex,
-                  backgroundColor: activeBgColor || '#ffffff',
-                  width: '100%',
-                  height: '100%',
-                }}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
+              <InlineTextEditor
+                initialText={activeText}
+                font={obj.font}
+                scale={scale}
+                color={curColor}
+                fontSize={activeFontSize || obj.font?.size || 12}
+                fontFamily={activeFontFamily || obj.font?.family || 'Helvetica'}
+                isBold={obj.font?.weight === 'bold'}
+                isUnderlined={isUnderlined}
+                onColorChange={(hex) => onColorChange?.(hex)}
+                onFontSizeChange={(size) => onFontSizeChange?.(size)}
+                onFontFamilyChange={(fam) => onFontFamilyChange?.(fam)}
+                onToggleBold={() => {}}
+                onToggleUnderline={() => onToggleUnderline?.()}
+                onCommit={(txt) => onCommitEdit?.(txt)}
+                onCancel={() => onCancelEdit?.()}
+                onDelete={onDeleteLine}
+                onRedact={onRedactLine}
+                isNew={false}
               />
             </div>
           );
@@ -779,96 +714,40 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       {/* Active New Text Insertion Box on Canvas */}
       {pendingInsert && pendingInsert.pageNum === pageNum && (
         <div
-          className="insert-text-canvas-wrapper"
           style={{
             position: 'absolute',
             left: `${pendingInsert.x * scale}px`,
             top: `${pendingInsert.y * scale}px`,
             zIndex: 60,
           }}
-          onClick={(e) => e.stopPropagation()}
         >
-          {isMobile ? (
-            <div className="mobile-insert-target-pin" id="mobile-insert-target-pin">
-              <div className="pin-pulse-ring" />
-              <div className="pin-marker-dot">
-                <span className="pin-icon">📍</span>
-              </div>
-              <div className="pin-preview-box">
-                <span
-                  className="pin-text-preview"
-                  style={{
-                    color: pendingInsert.color || '#000000',
-                    fontFamily: pendingInsert.fontFamily,
-                    fontSize: `${Math.max(pendingInsert.fontSize * scale, 12)}px`,
-                    fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
-                    textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
-                  }}
-                >
-                  {pendingInsert.text ? pendingInsert.text : 'Type in sheet below…'}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="desktop-inline-insert-container">
-              <input
-                autoFocus
-                type="text"
-                className="insert-text-canvas-input"
-                value={pendingInsert.text}
-                onChange={(e) => onUpdatePendingText?.(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onCommitPendingText?.();
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    onCancelPendingText?.();
-                  }
-                }}
-                placeholder="Type text here…"
-                style={{
-                  fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
-                  fontFamily: pendingInsert.fontFamily,
-                  fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
-                  textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
-                  textUnderlineOffset: '2.5px',
-                  textDecorationThickness: '1.5px',
-                  color: pendingInsert.color,
-                }}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-              />
-              <div className="desktop-inline-insert-actions">
-                <button
-                  type="button"
-                  className="desktop-inline-insert-action-btn commit"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCommitPendingText?.();
-                  }}
-                  title="Add text (Enter)"
-                  aria-label="Add text"
-                >
-                  ✓
-                </button>
-                <button
-                  type="button"
-                  className="desktop-inline-insert-action-btn cancel"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCancelPendingText?.();
-                  }}
-                  title="Cancel (Esc)"
-                  aria-label="Cancel"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
+          <InlineTextEditor
+            initialText={pendingInsert.text}
+            font={{
+              family: pendingInsert.fontFamily,
+              size: pendingInsert.fontSize,
+              weight: pendingInsert.fontWeight,
+              style: 'normal',
+              color: [0, 0, 0],
+              embedded: false,
+              subsetted: false,
+              isCid: false,
+            }}
+            scale={scale}
+            color={pendingInsert.color}
+            fontSize={pendingInsert.fontSize}
+            fontFamily={pendingInsert.fontFamily}
+            isBold={pendingInsert.fontWeight === 'bold'}
+            isUnderlined={pendingInsert.isUnderlined}
+            onColorChange={(hex) => onUpdatePendingColor?.(hex)}
+            onFontSizeChange={(size) => onUpdatePendingFontSize?.(size)}
+            onFontFamilyChange={(fam) => onUpdatePendingFontFamily?.(fam)}
+            onToggleBold={() => onTogglePendingBold?.()}
+            onToggleUnderline={() => onTogglePendingUnderline?.()}
+            onCommit={(txt) => onCommitPendingText?.(txt)}
+            onCancel={() => onCancelPendingText?.()}
+            isNew={true}
+          />
         </div>
       )}
     </div>
@@ -963,7 +842,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   onExitAddTextMode,
 }) => {
   const { showToast } = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
   const [pdfDoc, setPdfDoc] = useState<any>(externalPdfDoc || null);
@@ -980,7 +858,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [activeObj, setActiveObj] = useState<EditableText | null>(null);
   const [activeText, setActiveText] = useState<string>('');
   const [activeColor, setActiveColor] = useState<string>('');
-  const [activeBgColor, setActiveBgColor] = useState<string>('#ffffff');
   const [activeFontSize, setActiveFontSize] = useState<number>(10);
 
   // Screen size check for mobile-first interaction
@@ -1181,12 +1058,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   }, [currentPage, pdfDoc]);
 
-  // Focus inline input on select (Desktop only — on mobile the sheet handles focus)
-  useEffect(() => {
-    if (activeObj && inputRef.current && !isMobileScreen) {
-      inputRef.current.focus({ preventScroll: true });
-    }
-  }, [activeObj, isMobileScreen]);
 
   // Auto-scroll to matching overlay on canvas when search match changes
   useEffect(() => {
@@ -1249,6 +1120,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   // Active in-place editing state
   const isColorModifiedRef = useRef<boolean>(false);
+  const origUnderlinedRef = useRef<boolean>(false);
 
   // Start in-place edit
   const handleStartEdit = (obj: EditableText) => {
@@ -1264,6 +1136,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       obj.font?.style === 'underline' ||
       /^(signature|name|date|title|by):\s*/i.test(obj.text);
     setIsUnderlined(hasUnderscoreLine);
+    origUnderlinedRef.current = hasUnderscoreLine;
 
     // If this is a form fill line with underscores, strip the placeholder underscores
     // so the user can type their value cleanly directly onto the line without cursor getting stuck in underscores
@@ -1279,7 +1152,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const origRgb = obj.font.color || [0, 0, 0];
     const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;
     setActiveColor(origHex);
-    setActiveBgColor('#ffffff');
     onActiveEditChange?.(true);
     setSelectedImage(null);
     setAdjustmentState(null);
@@ -1295,10 +1167,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
-  const handleCommit = async () => {
+  const handleCommit = async (overrideText?: string) => {
     if (!activeObj) return;
     const origText = activeObj.text;
-    const newText = activeText;
+    const newText = overrideText !== undefined ? overrideText : activeText;
     const color = isColorModifiedRef.current ? activeColor : undefined;
     const targetId = activeObj.id;
     const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
@@ -1308,11 +1180,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const fontSize = activeFontSize !== origSize ? activeFontSize : undefined;
     const origFont = activeObj.font?.family || 'Helvetica';
     const newFontFamily = activeFontFamily !== origFont ? activeFontFamily : undefined;
+    const isUnderlineModified = isUnderlined !== origUnderlinedRef.current;
 
     setActiveObj(null);
     onActiveEditChange?.(false);
 
-    if (origText === newText && !color && fontSize === undefined && !newFontFamily) return;
+    if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified) return;
 
     try {
       await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily);
@@ -1321,21 +1194,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
-      e.preventDefault();
-      setIsUnderlined((v) => !v);
-      return;
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleCommit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setActiveObj(null);
-      onActiveEditChange?.(false);
-    }
-  };
+
 
   const handleDeleteLine = async () => {
     if (!activeObj) return;
@@ -1650,58 +1509,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
       )}
 
-      {/* Floating Add Text Instruction Guide Banner */}
-      {isAddTextMode && !pendingInsert && (
-        <div className="add-text-guide-banner" id="add-text-guide-banner">
-          <div className="guide-banner-content">
-            <span className="guide-pin-icon">📍</span>
-            <span className="guide-text">
-              {isMobileScreen
-                ? 'Tap anywhere on the page to place text'
-                : 'Click anywhere on the page to place text'}
-            </span>
-          </div>
-          {onExitAddTextMode && (
-            <button
-              type="button"
-              className="guide-banner-cancel-btn"
-              onClick={onExitAddTextMode}
-              aria-label="Cancel add text mode"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
-      {activeObj && isMobileScreen && (
-        <MobileTextEditorSheet
-          textObject={activeObj}
-          activeText={activeText}
-          onChangeText={setActiveText}
-          selectedColor={activeColor}
-          onSelectColor={(hex) => {
-            isColorModifiedRef.current = true;
-            setActiveColor(hex);
-          }}
-          fontSize={activeFontSize}
-          onFontSizeChange={(size) => setActiveFontSize(size)}
-          fontFamily={activeFontFamily}
-          onFontFamilyChange={(fam) => setActiveFontFamily(fam)}
-          isUnderlined={isUnderlined}
-          onToggleUnderline={() => setIsUnderlined((v) => !v)}
-          onCommit={handleCommit}
-          onCancel={() => {
-            setActiveObj(null);
-            onActiveEditChange?.(false);
-          }}
-          onDeleteLine={handleDeleteLine}
-          onRedactLine={handleRedactLine}
-          isSubmitting={isProcessing}
-        />
-      )}
-
       {/* Docked Contextual Subbar for Logo / Image Adjustment */}
       {selectedImage && (
         <ImageEditorSubbar
@@ -1737,89 +1544,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         onClose={() => setIsCropModalOpen(false)}
         onApplyCrop={handleApplyCrop}
       />
-
-      {/* Dedicated Mobile Sheet for Inserting New Text */}
-      {pendingInsert && isMobileScreen && (
-        <MobileTextInsertSheet
-          initialText={pendingInsert.text}
-          pageNum={pendingInsert.pageNum}
-          fontSize={pendingInsert.fontSize}
-          onFontSizeChange={(size) =>
-            setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
-          }
-          fontFamily={pendingInsert.fontFamily}
-          onFontFamilyChange={(family) =>
-            setPendingInsert((prev) => (prev ? { ...prev, fontFamily: family } : null))
-          }
-          isBold={pendingInsert.fontWeight === 'bold'}
-          onToggleBold={() =>
-            setPendingInsert((prev) =>
-              prev
-                ? { ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }
-                : null
-            )
-          }
-          isUnderlined={pendingInsert.isUnderlined}
-          onToggleUnderline={() =>
-            setPendingInsert((prev) =>
-              prev ? { ...prev, isUnderlined: !prev.isUnderlined } : null
-            )
-          }
-          color={pendingInsert.color}
-          onColorChange={(hex) =>
-            setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
-          }
-          onLiveTextChange={(txt) =>
-            setPendingInsert((prev) => (prev ? { ...prev, text: txt } : null))
-          }
-          onCommit={(txt) => {
-            handleCommitPendingText(txt);
-          }}
-          onCancel={handleCancelPendingText}
-          isSubmitting={isProcessing}
-        />
-      )}
-
-      {/* Docked Contextual Subbar for Inserting New Text (Desktop only) */}
-      {pendingInsert && !isMobileScreen && (
-        <InlineTextInsertBar
-          fontFamily={pendingInsert.fontFamily}
-          onFontFamilyChange={(family) =>
-            setPendingInsert((prev) => (prev ? { ...prev, fontFamily: family } : null))
-          }
-          fontSize={pendingInsert.fontSize}
-          onFontSizeChange={(size) =>
-            setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
-          }
-          isBold={pendingInsert.fontWeight === 'bold'}
-          onToggleBold={() =>
-            setPendingInsert((prev) =>
-              prev
-                ? { ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }
-                : null
-            )
-          }
-          isUnderlined={pendingInsert.isUnderlined}
-          onToggleUnderline={() =>
-            setPendingInsert((prev) =>
-              prev ? { ...prev, isUnderlined: !prev.isUnderlined } : null
-            )
-          }
-          color={pendingInsert.color}
-          onColorChange={(hex) =>
-            setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
-          }
-          onCommit={handleCommitPendingText}
-          onCancel={handleCancelPendingText}
-          isSubmitting={isProcessing}
-          detectedFontFamily={pendingInsert.detectedFontFamily}
-          availableDocumentFonts={pendingInsert.availableDocumentFonts}
-          isSameAsPdf={pendingInsert.isSameAsPdf}
-          onToggleSameAsPdf={(val) =>
-            setPendingInsert((prev) => (prev ? { ...prev, isSameAsPdf: val } : null))
-          }
-        />
-      )}
 
       {/* Main Continuous Document Viewport (Google Drive style continuous scrolling) */}
       <div
@@ -1876,7 +1600,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               activeObj={activeObj}
               activeText={activeText}
               activeColor={activeColor}
-              activeBgColor={activeBgColor}
               activeFontSize={activeFontSize}
               activeFontFamily={activeFontFamily}
               selectedImage={selectedImage}
@@ -1885,21 +1608,49 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               activeMatchKey={activeMatchKey || null}
               allSearchMatchIds={allSearchMatchIds}
               searchQuery={searchQuery}
-              inputRef={inputRef}
               onStartEdit={handleStartEdit}
-              setActiveText={setActiveText}
-              handleKeyDown={handleKeyDown}
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}
-              isMobile={isMobileScreen}
               isAddTextMode={isAddTextMode}
               isUnderlined={isUnderlined}
               pendingInsert={pendingInsert}
               modifiedPage={modifiedPage}
               onNewTextBoxRequest={handleNewTextBoxRequest}
-              onUpdatePendingText={(text) => setPendingInsert((prev) => prev ? { ...prev, text } : null)}
               onCommitPendingText={handleCommitPendingText}
               onCancelPendingText={handleCancelPendingText}
+              onCommitEdit={handleCommit}
+              onCancelEdit={() => {
+                setActiveObj(null);
+                onActiveEditChange?.(false);
+              }}
+              onDeleteLine={handleDeleteLine}
+              onRedactLine={handleRedactLine}
+              onColorChange={(hex) => {
+                isColorModifiedRef.current = true;
+                setActiveColor(hex);
+              }}
+              onFontSizeChange={(size) => setActiveFontSize(size)}
+              onFontFamilyChange={(fam) => setActiveFontFamily(fam)}
+              onToggleUnderline={() => setIsUnderlined((v) => !v)}
+              onUpdatePendingColor={(hex) =>
+                setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
+              }
+              onUpdatePendingFontSize={(size) =>
+                setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
+              }
+              onUpdatePendingFontFamily={(fam) =>
+                setPendingInsert((prev) => (prev ? { ...prev, fontFamily: fam } : null))
+              }
+              onTogglePendingBold={() =>
+                setPendingInsert((prev) =>
+                  prev ? { ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' } : null
+                )
+              }
+              onTogglePendingUnderline={() =>
+                setPendingInsert((prev) =>
+                  prev ? { ...prev, isUnderlined: !prev.isUnderlined } : null
+                )
+              }
             />
           ))}
         </div>

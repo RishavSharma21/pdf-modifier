@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Trash2, Palette, RotateCcw, Loader2, Quote, EyeOff } from 'lucide-react';
+import { Trash2, Palette, RotateCcw, Loader2, Quote, EyeOff, Type, Underline } from 'lucide-react';
 import type { EditableText } from '../types/pdf';
 
 interface MobileTextEditorSheetProps {
@@ -8,12 +8,27 @@ interface MobileTextEditorSheetProps {
   onChangeText: (text: string) => void;
   selectedColor: string;
   onSelectColor: (hex: string) => void;
+  fontSize?: number;
+  onFontSizeChange?: (size: number) => void;
+  fontFamily?: string;
+  onFontFamilyChange?: (family: string) => void;
+  isUnderlined?: boolean;
+  onToggleUnderline?: () => void;
   onCommit: () => void;
   onCancel: () => void;
   onDeleteLine: () => void;
   onRedactLine?: () => void;
   isSubmitting?: boolean;
 }
+
+const COMMON_FONTS = [
+  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Times', value: '"Times New Roman", Times, Georgia, serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Courier', value: '"Courier New", Courier, monospace' },
+  { label: 'Inter', value: 'Inter, -apple-system, sans-serif' },
+];
 
 const COLOR_PRESETS = [
   { label: 'Black', hex: '#000000' },
@@ -29,6 +44,12 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
   onChangeText,
   selectedColor,
   onSelectColor,
+  fontSize,
+  onFontSizeChange,
+  fontFamily,
+  onFontFamilyChange,
+  isUnderlined = false,
+  onToggleUnderline,
   onCommit,
   onCancel,
   onDeleteLine,
@@ -38,6 +59,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
   const colorInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [viewportBottom, setViewportBottom] = useState<number>(0);
+  const [isFontMenuOpen, setIsFontMenuOpen] = useState(false);
 
   const origColorRgb = textObject.font.color || [0, 0, 0];
   const origColorHex = `#${Math.round(origColorRgb[0] * 255)
@@ -48,6 +70,10 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
     .toString(16)
     .padStart(2, '0')}`.toLowerCase();
   const currentColor = (selectedColor || origColorHex).toLowerCase();
+
+  const currentSize = fontSize !== undefined ? fontSize : Math.round(textObject.font.size * 10) / 10;
+  const currentFontFamily = fontFamily || textObject.font.family || 'Helvetica';
+  const displayFontName = currentFontFamily.split(',')[0].replace(/['"]/g, '').trim();
 
   // Dynamic visual viewport adjustment for mobile software keyboards
   useEffect(() => {
@@ -80,7 +106,11 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
     }
   }, [textObject.id]);
 
-  const hasChanges = activeText !== textObject.text || (selectedColor && selectedColor.toLowerCase() !== origColorHex);
+  const hasChanges =
+    activeText !== textObject.text ||
+    (selectedColor && selectedColor.toLowerCase() !== origColorHex) ||
+    (fontSize !== undefined && fontSize !== Math.round(textObject.font.size * 10) / 10) ||
+    (fontFamily && fontFamily !== (textObject.font.family || 'Helvetica'));
 
   return (
     <div
@@ -100,10 +130,10 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
         onClick={(e) => e.stopPropagation()}
         id="mobile-text-edit-sheet"
       >
-        {/* Subtle Pill Grab Handle */}
+        {/* Grab Handle */}
         <div className="mobile-sheet-handle" />
 
-        {/* Top Action Header: Cancel on Left, Title in Center, Save on Right */}
+        {/* Top Action Header */}
         <div className="mobile-sheet-header">
           <button
             type="button"
@@ -118,9 +148,9 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
           <div className="mobile-sheet-title-group">
             <span className="mobile-sheet-title">Edit Text</span>
             <div className="mobile-sheet-font-pill">
-              <span>{textObject.font.family || 'Standard'}</span>
+              <span>{displayFontName}</span>
               <span className="font-pill-dot">·</span>
-              <span>{Math.round(textObject.font.size * 10) / 10} pt</span>
+              <span>{currentSize} pt</span>
             </div>
           </div>
 
@@ -151,7 +181,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
           </div>
         </div>
 
-        {/* Main Textarea Area with High Contrast & Color Accent */}
+        {/* Main Textarea Area */}
         <div className="mobile-sheet-input-wrapper">
           <textarea
             ref={textareaRef}
@@ -165,7 +195,6 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
             autoCapitalize="sentences"
             spellCheck={false}
           />
-          {/* Subtle Color Indicator Accent Line */}
           <div
             className="mobile-sheet-color-bar"
             style={{ backgroundColor: currentColor }}
@@ -173,7 +202,82 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
           />
         </div>
 
-        {/* Quick Color Presets & Actions */}
+        {/* Typography Controls (Font Family, Size Stepper, Underline) */}
+        <div className="mobile-typography-row">
+          {/* Font Family Selector */}
+          <div className="mobile-font-family-selector">
+            <button
+              type="button"
+              className={`mobile-font-btn ${isFontMenuOpen ? 'active' : ''}`}
+              onClick={() => setIsFontMenuOpen((v) => !v)}
+              aria-label="Select font family"
+            >
+              <Type size={13} />
+              <span>{displayFontName}</span>
+            </button>
+          </div>
+
+          {/* Font Size Stepper */}
+          {onFontSizeChange && (
+            <div className="mobile-stepper-group">
+              <button
+                type="button"
+                className="mobile-stepper-btn"
+                onClick={() => onFontSizeChange(Math.max(6, Math.round((currentSize - 1) * 10) / 10))}
+                disabled={currentSize <= 6}
+                aria-label="Decrease font size"
+              >
+                -
+              </button>
+              <span className="mobile-stepper-val">{currentSize} pt</span>
+              <button
+                type="button"
+                className="mobile-stepper-btn"
+                onClick={() => onFontSizeChange(Math.min(96, Math.round((currentSize + 1) * 10) / 10))}
+                disabled={currentSize >= 96}
+                aria-label="Increase font size"
+              >
+                +
+              </button>
+            </div>
+          )}
+
+          {/* Underline Toggle */}
+          {onToggleUnderline && (
+            <button
+              type="button"
+              className={`mobile-style-toggle-btn ${isUnderlined ? 'active' : ''}`}
+              onClick={onToggleUnderline}
+              aria-label="Toggle Underline"
+            >
+              <Underline size={13} />
+            </button>
+          )}
+        </div>
+
+        {/* Font Family Selection Pills (when opened) */}
+        {isFontMenuOpen && onFontFamilyChange && (
+          <div className="mobile-font-pills-scroll">
+            {COMMON_FONTS.map((f) => {
+              const isSelected = displayFontName.toLowerCase() === f.label.toLowerCase();
+              return (
+                <button
+                  key={f.label}
+                  type="button"
+                  className={`mobile-font-pill ${isSelected ? 'active' : ''}`}
+                  onClick={() => {
+                    onFontFamilyChange(f.value);
+                    setIsFontMenuOpen(false);
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Bottom Tool Strip: Colors & Actions */}
         <div className="mobile-sheet-footer">
           <div className="mobile-sheet-tools-left">
             <span className="mobile-sheet-tools-label">Color:</span>
@@ -221,6 +325,8 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
                 onClick={() => {
                   onChangeText(textObject.text);
                   onSelectColor(origColorHex);
+                  onFontSizeChange?.(Math.round(textObject.font.size * 10) / 10);
+                  onFontFamilyChange?.(textObject.font.family || 'Helvetica');
                 }}
                 title="Reset to original"
               >

@@ -9,6 +9,8 @@ import {
   Minimize2,
   Undo2,
   Redo2,
+  Layers,
+  Type,
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -25,6 +27,10 @@ interface ToolbarProps {
   canUndo?: boolean;
   onRedo?: () => void;
   canRedo?: boolean;
+  onOpenPagesSheet?: () => void;
+  onToggleAddText?: () => void;
+  isAddTextMode?: boolean;
+  isMobile?: boolean;
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5];
@@ -43,6 +49,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   canUndo = false,
   onRedo,
   canRedo = false,
+  onOpenPagesSheet,
+  onToggleAddText,
+  isAddTextMode = false,
+  isMobile = false,
 }) => {
   const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
@@ -110,15 +120,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             className={`page-indicator-btn ${totalPages > 1 ? 'is-interactive' : ''}`}
             id="page-indicator"
             onClick={() => {
-              if (totalPages > 1) setIsPageMenuOpen((v) => !v);
+              if (isMobile && onOpenPagesSheet) {
+                onOpenPagesSheet();
+              } else if (totalPages > 1) {
+                setIsPageMenuOpen((v) => !v);
+              }
             }}
-            title={totalPages > 1 ? 'Jump to page' : undefined}
+            title={totalPages > 1 ? (isMobile ? 'Open pages manager' : 'Jump to page') : undefined}
             type="button"
           >
             {currentPage} <span className="page-indicator-sep">/</span> {totalPages}
           </button>
 
-          {isPageMenuOpen && (
+          {!isMobile && isPageMenuOpen && (
             <div className="page-dropdown-menu" id="page-dropdown-menu">
               <div className="page-dropdown-header">Jump to page</div>
               <div className="page-dropdown-grid">
@@ -150,6 +164,36 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <ChevronRight size={15} />
         </button>
       </div>
+
+      {/* Mobile Pages Sheet Trigger Button */}
+      {onOpenPagesSheet && (
+        <>
+          <button
+            className="toolbar-btn mobile-only-btn mobile-pages-btn"
+            onClick={onOpenPagesSheet}
+            id="btn-mobile-toolbar-pages"
+            title="Pages, Rotate & Delete"
+            aria-label="Pages manager"
+          >
+            <Layers size={14} />
+          </button>
+        </>
+      )}
+
+      {/* Mobile Add Text Mode Toggle Button */}
+      {onToggleAddText && (
+        <>
+          <button
+            className={`toolbar-btn mobile-only-btn mobile-add-text-btn ${isAddTextMode ? 'active' : ''}`}
+            onClick={onToggleAddText}
+            id="btn-mobile-toolbar-add-text"
+            title="Add text to document"
+            aria-label="Add text"
+          >
+            <Type size={14} />
+          </button>
+        </>
+      )}
 
       <div className="toolbar-divider" />
 

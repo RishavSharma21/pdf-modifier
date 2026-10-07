@@ -7,6 +7,7 @@ import { PdfViewer } from './components/PdfViewer';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { PullToRefresh } from './components/PullToRefresh';
+import { MobilePagesSheet } from './components/MobilePagesSheet';
 import { useToast } from './components/Toast';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore
@@ -72,6 +73,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditingActive, setIsEditingActive] = useState<boolean>(false);
   const [isAddTextMode, setIsAddTextMode] = useState<boolean>(false);
+  const [isMobilePagesOpen, setIsMobilePagesOpen] = useState<boolean>(false);
   const [lastModifiedPage, setLastModifiedPage] = useState<number | null>(null);
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
     return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
@@ -1264,6 +1266,8 @@ export function App() {
         onShortcutsClick={() => setIsShortcutsOpen((v) => !v)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenPagesClick={session ? () => setIsMobilePagesOpen(true) : undefined}
+        onAddTextClick={session ? () => setIsAddTextMode((v) => !v) : undefined}
       />
 
       <div className={`main-workspace ${isEditingActive ? 'is-editing-mode' : ''}`} ref={canvasViewportRef}>
@@ -1381,6 +1385,10 @@ export function App() {
               canUndo={editCount > 0}
               onRedo={handleRedo}
               canRedo={redoCount > 0}
+              onOpenPagesSheet={() => setIsMobilePagesOpen(true)}
+              onToggleAddText={() => setIsAddTextMode((v) => !v)}
+              isAddTextMode={isAddTextMode}
+              isMobile={isMobileScreen}
             />
 
             {isFindReplaceOpen && (
@@ -1402,6 +1410,22 @@ export function App() {
                 onReplaceAll={handleReplaceAllInDocument}
               />
             )}
+
+            <MobilePagesSheet
+              isOpen={isMobilePagesOpen}
+              onClose={() => setIsMobilePagesOpen(false)}
+              pages={session.pages}
+              currentPage={currentPage}
+              pdfDoc={sharedPdfDoc}
+              modifiedPage={lastModifiedPage}
+              onPageSelect={(p) => {
+                setCurrentPage(p);
+                const el = document.getElementById(`pdf-page-${p}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              onRotatePage={handleRotatePage}
+              onDeletePage={handleDeletePage}
+            />
           </>
         )}
       </div>
@@ -1411,7 +1435,7 @@ export function App() {
         onClose={() => setIsShortcutsOpen(false)}
       />
 
-      <PullToRefresh disabled={isEditingActive || isFindReplaceOpen || isShortcutsOpen} />
+      <PullToRefresh disabled={isEditingActive || isFindReplaceOpen || isShortcutsOpen || isMobilePagesOpen} />
     </div>
   );
 }

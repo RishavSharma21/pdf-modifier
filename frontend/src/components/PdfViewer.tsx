@@ -8,6 +8,7 @@ import { InlineTextInsertBar } from './InlineTextInsertBar';
 import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
 import { MobileTextEditorSheet } from './MobileTextEditorSheet';
+import { MobileTextInsertSheet } from './MobileTextInsertSheet';
 import { Image as ImageIcon, Type } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -1560,6 +1561,26 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
       )}
 
+      {/* Mobile Add Text Mode Floating Banner */}
+      {isAddTextMode && isMobileScreen && !pendingInsert && (
+        <div className="mobile-add-text-banner" id="mobile-add-text-banner">
+          <div className="mobile-add-text-banner-left">
+            <Type size={14} className="banner-type-icon" />
+            <span>Tap anywhere on the page to insert text</span>
+          </div>
+          {onExitAddTextMode && (
+            <button
+              type="button"
+              className="mobile-banner-cancel-btn"
+              onClick={onExitAddTextMode}
+              aria-label="Cancel add text mode"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
       {activeObj && isMobileScreen && (
         <MobileTextEditorSheet
@@ -1571,6 +1592,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             isColorModifiedRef.current = true;
             setActiveColor(hex);
           }}
+          fontSize={activeFontSize}
+          onFontSizeChange={(size) => setActiveFontSize(size)}
+          fontFamily={activeFontFamily}
+          onFontFamilyChange={(fam) => setActiveFontFamily(fam)}
+          isUnderlined={isUnderlined}
+          onToggleUnderline={() => setIsUnderlined((v) => !v)}
           onCommit={handleCommit}
           onCancel={() => {
             setActiveObj(null);
@@ -1618,8 +1645,49 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         onApplyCrop={handleApplyCrop}
       />
 
-      {/* Docked Contextual Subbar for Inserting New Text */}
-      {pendingInsert && (
+      {/* Dedicated Mobile Sheet for Inserting New Text */}
+      {pendingInsert && isMobileScreen && (
+        <MobileTextInsertSheet
+          initialText={pendingInsert.text}
+          fontSize={pendingInsert.fontSize}
+          onFontSizeChange={(size) =>
+            setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
+          }
+          fontFamily={pendingInsert.fontFamily}
+          onFontFamilyChange={(family) =>
+            setPendingInsert((prev) => (prev ? { ...prev, fontFamily: family } : null))
+          }
+          isBold={pendingInsert.fontWeight === 'bold'}
+          onToggleBold={() =>
+            setPendingInsert((prev) =>
+              prev
+                ? { ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }
+                : null
+            )
+          }
+          isUnderlined={pendingInsert.isUnderlined}
+          onToggleUnderline={() =>
+            setPendingInsert((prev) =>
+              prev ? { ...prev, isUnderlined: !prev.isUnderlined } : null
+            )
+          }
+          color={pendingInsert.color}
+          onColorChange={(hex) =>
+            setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
+          }
+          onCommit={(txt) => {
+            setPendingInsert((prev) => (prev ? { ...prev, text: txt } : null));
+            setTimeout(() => {
+              handleCommitPendingText();
+            }, 30);
+          }}
+          onCancel={handleCancelPendingText}
+          isSubmitting={isProcessing}
+        />
+      )}
+
+      {/* Docked Contextual Subbar for Inserting New Text (Desktop only) */}
+      {pendingInsert && !isMobileScreen && (
         <InlineTextInsertBar
           fontFamily={pendingInsert.fontFamily}
           onFontFamilyChange={(family) =>

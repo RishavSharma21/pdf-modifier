@@ -9,6 +9,8 @@ import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useToast } from './components/Toast';
 import * as pdfjsLib from 'pdfjs-dist';
+// @ts-ignore
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
   uploadPdf,
   getSession,
@@ -26,6 +28,9 @@ import {
   startKeepAlivePing,
 } from './services/api';
 import type { SessionInfo, EditableText, ImageObject } from './types/pdf';
+
+// Ensure PDF.js worker is ready immediately before any getDocument call
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // Start keep-alive immediately — prevents Render cold starts on deployed site
 startKeepAlivePing();
@@ -68,6 +73,17 @@ export function App() {
   const [isEditingActive, setIsEditingActive] = useState<boolean>(false);
   const [isAddTextMode, setIsAddTextMode] = useState<boolean>(false);
   const [lastModifiedPage, setLastModifiedPage] = useState<number | null>(null);
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+  });
+
+  useEffect(() => {
+    const handleWinResize = () => {
+      setIsMobileScreen(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleWinResize);
+    return () => window.removeEventListener('resize', handleWinResize);
+  }, []);
 
   // Light / Dark Theme Management with LocalStorage Persistence (Default: Light)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -569,7 +585,10 @@ export function App() {
       file.arrayBuffer().then(async (buf) => {
         try {
           const loadingTask = pdfjsLib.getDocument({
-            data: buf,
+            data: new Uint8Array(buf),
+            disableStream: true,
+            disableRange: true,
+            disableAutoFetch: false,
             cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
             cMapPacked: true,
           });
@@ -673,6 +692,9 @@ export function App() {
       const nextKey = Date.now();
       const freshDoc = await pdfjsLib.getDocument({
         url: `${getDownloadUrl(sessionId)}&v=${nextKey}`,
+        disableStream: true,
+        disableRange: true,
+        disableAutoFetch: false,
         cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
         cMapPacked: true,
       }).promise;
@@ -784,6 +806,9 @@ export function App() {
           }
           const freshDoc = await pdfjsLib.getDocument({
             data: bytes,
+            disableStream: true,
+            disableRange: true,
+            disableAutoFetch: false,
             cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
             cMapPacked: true,
           }).promise;
@@ -1279,20 +1304,22 @@ export function App() {
           )
         ) : (
           <>
-            <Sidebar
-              pages={session.pages}
-              currentPage={currentPage}
-              pdfUrl={pdfUrl}
-              pdfDoc={sharedPdfDoc}
-              modifiedPage={lastModifiedPage}
-              onPageSelect={(p) => {
-                setCurrentPage(p);
-                const el = document.getElementById(`pdf-page-${p}`);
-                if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
-              }}
-              onRotatePage={handleRotatePage}
-              onDeletePage={handleDeletePage}
-            />
+            {!isMobileScreen && (
+              <Sidebar
+                pages={session.pages}
+                currentPage={currentPage}
+                pdfUrl={pdfUrl}
+                pdfDoc={sharedPdfDoc}
+                modifiedPage={lastModifiedPage}
+                onPageSelect={(p) => {
+                  setCurrentPage(p);
+                  const el = document.getElementById(`pdf-page-${p}`);
+                  if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+                }}
+                onRotatePage={handleRotatePage}
+                onDeletePage={handleDeletePage}
+              />
+            )}
 
             <PdfViewer
               key={session.sessionId}

@@ -867,8 +867,6 @@ body {
   padding: 32px 40px 100px 40px;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-4) transparent;
-  perspective: 1600px;
-  perspective-origin: 50% 30%;
 }
 
 .canvas-viewport::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -894,9 +892,18 @@ body {
   border-radius: 3px;
   background: #ffffff;
   transition: box-shadow 0.2s ease;
-  transform-style: preserve-3d;
   flex-shrink: 0;
   margin: 0 auto;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.pdf-page-wrapper canvas {
+  display: block;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .pdf-page-wrapper.updating {
@@ -4940,15 +4947,16 @@ html.theme-transitioning .find-replace-card {
     align-items: center;
     box-sizing: border-box;
     width: 100%;
-    perspective: 1400px;
-    perspective-origin: 50% 30%;
+    perspective: none !important;
   }
 
   .pdf-page-wrapper {
     margin-bottom: 20px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
     flex-shrink: 0;
-    transform-style: preserve-3d;
+    transform-style: flat !important;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
   }
 
   /* Touch hitboxes for clickable text runs */

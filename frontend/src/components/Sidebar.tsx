@@ -100,6 +100,10 @@ const PageThumbnail: React.FC<{
           ctx.drawImage(offscreen, 0, 0);
         }
 
+        // Release offscreen canvas memory for WebKit/iOS immediately
+        offscreen.width = 0;
+        offscreen.height = 0;
+
         renderedDocRef.current = pdfDoc;
         renderedRotationRef.current = pageRotation;
         hasRenderedRef.current = true;

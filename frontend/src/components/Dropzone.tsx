@@ -127,7 +127,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFileSelected, isLoading })
       <input
         type="file"
         ref={inputRef}
-        accept=".pdf"
+        accept=".pdf,application/pdf"
         style={{ display: 'none' }}
         onChange={handleInputChange}
         id="pdf-file-input"

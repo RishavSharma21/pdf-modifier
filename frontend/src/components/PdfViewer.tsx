@@ -267,23 +267,57 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 
         const pageRotation = pageMeta?.rotation ?? 0;
         const viewport = page.getViewport({ scale, rotation: pageRotation });
-        const outputScale = window.devicePixelRatio || 1;
-        const w = Math.floor(viewport.width * outputScale);
-        const h = Math.floor(viewport.height * outputScale);
 
-        const offscreen = document.createElement('canvas');
+        // iOS Safari and mobile devices have strict canvas memory & dimension limits (max 4096px, 12MP total area).
+        // Standard iPhone DPR is 3.0, which at 1.5-2.0 scale produces ~18-32MP canvases that iOS Safari silently drops.
+        const isIOS =
+          typeof navigator !== 'undefined' &&
+          (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+        const maxDpr = isIOS ? 1.5 : 2.0;
+        let outputScale = Math.min(window.devicePixelRatio || 1, maxDpr);
+
+        let w = Math.floor(viewport.width * outputScale);
+        let h = Math.floor(viewport.height * outputScale);
+
+        // Hardware safety clamp for iOS Safari WebKit
+        const MAX_DIM = isIOS ? 4096 : 8192;
+        const MAX_AREA = isIOS ? 12_000_000 : 16_777_216;
+        if (w > MAX_DIM || h > MAX_DIM || w * h > MAX_AREA) {
+          const downscale = Math.min(MAX_DIM / Math.max(w, h), Math.sqrt(MAX_AREA / (w * h)));
+          outputScale *= downscale;
+          w = Math.floor(viewport.width * outputScale);
+          h = Math.floor(viewport.height * outputScale);
+        }
+
+        let offscreen: HTMLCanvasElement | null = document.createElement('canvas');
         offscreen.width = w;
         offscreen.height = h;
         const offCtx = offscreen.getContext('2d');
-        if (!offCtx) return;
+        if (!offCtx) {
+          offscreen.width = 0;
+          offscreen.height = 0;
+          offscreen = null;
+          return;
+        }
         offCtx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
 
         renderTask = page.render({ canvasContext: offCtx, viewport });
         await renderTask.promise;
-        if (isCancelled) return;
+        if (isCancelled) {
+          offscreen.width = 0;
+          offscreen.height = 0;
+          offscreen = null;
+          return;
+        }
 
         const visibleCanvas = canvasRef.current;
-        if (!visibleCanvas) return;
+        if (!visibleCanvas) {
+          offscreen.width = 0;
+          offscreen.height = 0;
+          offscreen = null;
+          return;
+        }
         if (visibleCanvas.width !== w || visibleCanvas.height !== h) {
           visibleCanvas.width = w;
           visibleCanvas.height = h;
@@ -296,6 +330,11 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           visibleCtx.setTransform(1, 0, 0, 1, 0, 0);
           visibleCtx.drawImage(offscreen, 0, 0);
         }
+
+        // CRITICAL FOR IOS SAFARI: Immediately release offscreen GPU backing store!
+        offscreen.width = 0;
+        offscreen.height = 0;
+        offscreen = null;
 
         renderedDocRef.current = pdfDoc;
         renderedScaleRef.current = scale;
@@ -1007,6 +1046,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       try {
         const loadingTask = pdfjsLib.getDocument({
           url: pdfUrl,
+          disableStream: true,
+          disableRange: true,
+          disableAutoFetch: false,
           cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
           cMapPacked: true,
         });

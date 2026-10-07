@@ -13,6 +13,8 @@ export interface InlineTextEditorProps {
   leftPx: number;
   topPx: number;
   pageWidthPx: number;
+  initialWidth?: number;
+  initialHeight?: number;
   onLiveChange?: (text: string) => void;
   onCommit: (text: string) => void;
   onCancel: () => void;
@@ -31,6 +33,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   leftPx,
   topPx,
   pageWidthPx,
+  initialWidth,
+  initialHeight,
   onLiveChange,
   onCommit,
   onCancel,
@@ -55,15 +59,23 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     }
   }, []);
 
-  const fontSizePx = Math.max(fontSize * scale, 11);
+  // Exact matching font size at current page scale
+  const fontSizePx = Math.max(Math.round(fontSize * scale * 10) / 10, 8);
 
   // Strictly clamp width within PDF page bounds so text NEVER escapes the PDF
-  const availableMaxWidth = Math.max(pageWidthPx - leftPx - 10, 50);
-  const approximateCharWidth = fontSizePx * 0.58;
+  const availableMaxWidth = Math.max(pageWidthPx - leftPx - 8, 40);
+  const approxCharWidth = fontSizePx * 0.58;
+  const measuredWidth = Math.round((text.length + 1) * approxCharWidth);
+  const minWidth = initialWidth ? Math.min(initialWidth + 6, availableMaxWidth) : (isNew ? 110 : 36);
+
   const contentWidth = Math.min(
-    Math.max((text.length + 2) * approximateCharWidth, isNew ? 100 : 36),
+    Math.max(measuredWidth, minWidth),
     availableMaxWidth
   );
+
+  const contentHeight = initialHeight
+    ? Math.max(initialHeight + 2, fontSizePx * 1.25)
+    : Math.max(fontSizePx * 1.35, 20);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -88,6 +100,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         position: 'absolute',
         left: `${leftPx}px`,
         top: `${topPx}px`,
+        width: `${contentWidth}px`,
+        height: `${contentHeight}px`,
         maxWidth: `${availableMaxWidth}px`,
         zIndex: 65,
       }}
@@ -97,9 +111,9 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       <div
         className="canvas-inline-input-frame"
         style={{
-          width: `${contentWidth}px`,
-          maxWidth: `${availableMaxWidth}px`,
-          minHeight: `${Math.round(fontSizePx * 1.25)}px`,
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
         }}
       >
         <input
@@ -111,13 +125,15 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={isNew ? 'Type text here…' : ''}
           style={{
+            width: '100%',
+            height: '100%',
             fontSize: `${fontSizePx}px`,
             fontFamily: fontFamily || font?.family || 'Helvetica',
             fontWeight: isBold ? 700 : 400,
             fontStyle: font?.style === 'italic' ? 'italic' : 'normal',
             textDecoration: isUnderlined ? 'underline' : 'none',
             color: color || '#000000',
-            textUnderlineOffset: '2.5px',
+            textUnderlineOffset: '2px',
           }}
           spellCheck={false}
           autoComplete="off"

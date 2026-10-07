@@ -243,29 +243,28 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         if (isCancelled) return;
 
         const pageRotation = pageMeta?.rotation ?? 0;
-        const viewport = page.getViewport({ scale, rotation: pageRotation });
+        const cssViewport = page.getViewport({ scale, rotation: pageRotation });
 
-        // iOS Safari and mobile devices have strict canvas memory & dimension limits (max 4096px, 12MP total area).
-        // Standard iPhone DPR is 3.0, which at 1.5-2.0 scale produces ~18-32MP canvases that iOS Safari silently drops.
-        const isIOS =
-          typeof navigator !== 'undefined' &&
-          (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-        const maxDpr = isIOS ? 1.5 : 2.0;
-        let outputScale = Math.min(window.devicePixelRatio || 1, maxDpr);
+        // Calculate native device pixel ratio for crystal-clear retina rendering
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        // Support up to 3x Retina (all modern iPhones / iPads / high-DPI screens)
+        let outputScale = Math.min(Math.max(dpr, 1), 3.0);
 
-        let w = Math.floor(viewport.width * outputScale);
-        let h = Math.floor(viewport.height * outputScale);
+        let w = Math.floor(cssViewport.width * outputScale);
+        let h = Math.floor(cssViewport.height * outputScale);
 
-        // Hardware safety clamp for iOS Safari WebKit
-        const MAX_DIM = isIOS ? 4096 : 8192;
-        const MAX_AREA = isIOS ? 12_000_000 : 16_777_216;
+        // Hardware safety clamp for iOS Safari WebKit memory limit (4096px / 16MP)
+        const MAX_DIM = 4096;
+        const MAX_AREA = 16_000_000;
         if (w > MAX_DIM || h > MAX_DIM || w * h > MAX_AREA) {
           const downscale = Math.min(MAX_DIM / Math.max(w, h), Math.sqrt(MAX_AREA / (w * h)));
           outputScale *= downscale;
-          w = Math.floor(viewport.width * outputScale);
-          h = Math.floor(viewport.height * outputScale);
+          w = Math.floor(cssViewport.width * outputScale);
+          h = Math.floor(cssViewport.height * outputScale);
         }
+
+        // Render with true HiDPI scaled viewport directly in PDF.js for razor-sharp vector & text rasterization
+        const scaledViewport = page.getViewport({ scale: scale * outputScale, rotation: pageRotation });
 
         let offscreen: HTMLCanvasElement | null = document.createElement('canvas');
         offscreen.width = w;
@@ -277,9 +276,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           offscreen = null;
           return;
         }
-        offCtx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
 
-        renderTask = page.render({ canvasContext: offCtx, viewport });
+        renderTask = page.render({ canvasContext: offCtx, viewport: scaledViewport });
         await renderTask.promise;
         if (isCancelled) {
           offscreen.width = 0;
@@ -298,13 +296,13 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         if (visibleCanvas.width !== w || visibleCanvas.height !== h) {
           visibleCanvas.width = w;
           visibleCanvas.height = h;
-          visibleCanvas.style.width = Math.floor(viewport.width) + 'px';
-          visibleCanvas.style.height = Math.floor(viewport.height) + 'px';
+          visibleCanvas.style.width = Math.floor(cssViewport.width) + 'px';
+          visibleCanvas.style.height = Math.floor(cssViewport.height) + 'px';
         }
 
         const visibleCtx = visibleCanvas.getContext('2d');
         if (visibleCtx) {
-          visibleCtx.setTransform(1, 0, 0, 1, 0, 0);
+          visibleCtx.imageSmoothingEnabled = false;
           visibleCtx.drawImage(offscreen, 0, 0);
         }
 
@@ -618,6 +616,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               leftPx={bboxLeft}
               topPx={bboxTop}
               pageWidthPx={pageWidthPx}
+              initialWidth={bboxWidth}
+              initialHeight={bboxHeight}
               onLiveChange={onLiveTextChange}
               onCommit={(txt) => onCommitEdit?.(txt)}
               onCancel={() => onCancelEdit?.()}
@@ -705,6 +705,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           leftPx={pendingInsert.x * scale}
           topPx={pendingInsert.y * scale}
           pageWidthPx={(pageMeta?.width || 595.28) * scale}
+          initialWidth={110}
+          initialHeight={Math.round(pendingInsert.fontSize * scale * 1.35)}
           onLiveChange={onLiveTextChange}
           onCommit={(txt) => onCommitPendingText?.(txt)}
           onCancel={() => onCancelPendingText?.()}

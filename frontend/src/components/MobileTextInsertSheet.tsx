@@ -3,6 +3,7 @@ import { Type, Bold, Underline, Palette, Loader2 } from 'lucide-react';
 
 interface MobileTextInsertSheetProps {
   initialText?: string;
+  pageNum?: number;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
   fontFamily: string;
@@ -13,6 +14,7 @@ interface MobileTextInsertSheetProps {
   onToggleUnderline?: () => void;
   color: string;
   onColorChange: (hex: string) => void;
+  onLiveTextChange?: (text: string) => void;
   onCommit: (text: string) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
@@ -37,6 +39,7 @@ const COLOR_PRESETS = [
 
 export const MobileTextInsertSheet: React.FC<MobileTextInsertSheetProps> = ({
   initialText = '',
+  pageNum,
   fontSize,
   onFontSizeChange,
   fontFamily,
@@ -47,6 +50,7 @@ export const MobileTextInsertSheet: React.FC<MobileTextInsertSheetProps> = ({
   onToggleUnderline,
   color,
   onColorChange,
+  onLiveTextChange,
   onCommit,
   onCancel,
   isSubmitting = false,
@@ -128,7 +132,7 @@ export const MobileTextInsertSheet: React.FC<MobileTextInsertSheetProps> = ({
           </button>
 
           <div className="mobile-sheet-title-group">
-            <span className="mobile-sheet-title">Insert Text</span>
+            <span className="mobile-sheet-title">Insert Text {pageNum ? `· Page ${pageNum}` : ''}</span>
             <div className="mobile-sheet-font-pill">
               <span>{displayFontName}</span>
               <span className="font-pill-dot">·</span>
@@ -154,13 +158,21 @@ export const MobileTextInsertSheet: React.FC<MobileTextInsertSheetProps> = ({
           </button>
         </div>
 
+        {/* Location Hint */}
+        <div className="mobile-insert-location-hint">
+          📍 Placed on document. Tap anywhere on page to move position.
+        </div>
+
         {/* Text Input */}
         <div className="mobile-sheet-input-wrapper">
           <textarea
             ref={textareaRef}
             className="mobile-sheet-textarea"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              onLiveTextChange?.(e.target.value);
+            }}
             placeholder="Type your text to insert..."
             rows={2}
             autoComplete="off"

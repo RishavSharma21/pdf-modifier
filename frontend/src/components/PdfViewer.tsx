@@ -207,6 +207,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [isNearViewport, setIsNearViewport] = useState<boolean>(pageNum <= 4);
   const [isRendered, setIsRendered] = useState<boolean>(false);
   const renderedDocRef = useRef<any>(null);
@@ -373,6 +374,26 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         width: `${targetWidthPx}px`,
         height: `${targetHeightPx}px`,
         cursor: isAddTextMode ? 'crosshair' : 'default',
+      }}
+      onTouchStart={(e) => {
+        if (isAddTextMode && e.touches.length === 1) {
+          touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+      }}
+      onTouchEnd={(e) => {
+        if (isAddTextMode && onNewTextBoxRequest && touchStartRef.current && e.changedTouches.length === 1) {
+          const touch = e.changedTouches[0];
+          const dist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
+          if (dist < 15) {
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) {
+              const clickX = Math.round(((touch.clientX - rect.left) / scale) * 10) / 10;
+              const clickY = Math.round(((touch.clientY - rect.top) / scale) * 10) / 10;
+              onNewTextBoxRequest(clickX, clickY, pageNum);
+            }
+          }
+          touchStartRef.current = null;
+        }
       }}
       onClick={(e) => {
         if (isAddTextMode && onNewTextBoxRequest) {
@@ -760,36 +781,59 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <input
-            autoFocus
-            type="text"
-            className="insert-text-canvas-input"
-            value={pendingInsert.text}
-            onChange={(e) => onUpdatePendingText?.(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                onCommitPendingText?.();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                onCancelPendingText?.();
-              }
-            }}
-            placeholder="Type text here…"
-            style={{
-              fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
-              fontFamily: pendingInsert.fontFamily,
-              fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
-              textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
-              textUnderlineOffset: '2.5px',
-              textDecorationThickness: '1.5px',
-              color: pendingInsert.color,
-            }}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-          />
+          {isMobile ? (
+            <div className="mobile-insert-target-pin" id="mobile-insert-target-pin">
+              <div className="pin-pulse-ring" />
+              <div className="pin-marker-dot">
+                <span className="pin-icon">📍</span>
+              </div>
+              <div className="pin-preview-box">
+                <span
+                  className="pin-text-preview"
+                  style={{
+                    color: pendingInsert.color || '#000000',
+                    fontFamily: pendingInsert.fontFamily,
+                    fontSize: `${Math.max(pendingInsert.fontSize * scale, 12)}px`,
+                    fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
+                    textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
+                  }}
+                >
+                  {pendingInsert.text ? pendingInsert.text : 'Type in sheet below…'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <input
+              autoFocus
+              type="text"
+              className="insert-text-canvas-input"
+              value={pendingInsert.text}
+              onChange={(e) => onUpdatePendingText?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  onCommitPendingText?.();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onCancelPendingText?.();
+                }
+              }}
+              placeholder="Type text here…"
+              style={{
+                fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
+                fontFamily: pendingInsert.fontFamily,
+                fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
+                textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
+                textUnderlineOffset: '2.5px',
+                textDecorationThickness: '1.5px',
+                color: pendingInsert.color,
+              }}
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+          )}
         </div>
       )}
     </div>
@@ -1039,13 +1083,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       onExitAddTextMode?.();
     }
   };
-
-  // On mobile screens, when Add Text mode is triggered, immediately open the insert sheet for the current page
-  useEffect(() => {
-    if (isAddTextMode && isMobileScreen && !pendingInsert && !activeObj) {
-      handleNewTextBoxRequest(54, 72, currentPage);
-    }
-  }, [isAddTextMode, isMobileScreen, currentPage, pendingInsert, activeObj]);
 
   // Preserve scroll position across PDF reloads
   const savedScrollTopRef = useRef<number>(0);
@@ -1578,6 +1615,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
       )}
 
+      {/* Floating Add Text Instruction Guide Banner */}
+      {isAddTextMode && !pendingInsert && (
+        <div className="add-text-guide-banner" id="add-text-guide-banner">
+          <div className="guide-banner-content">
+            <span className="guide-pin-icon">📍</span>
+            <span className="guide-text">
+              {isMobileScreen
+                ? 'Tap anywhere on the page to place text'
+                : 'Click anywhere on the page to place text'}
+            </span>
+          </div>
+          {onExitAddTextMode && (
+            <button
+              type="button"
+              className="guide-banner-cancel-btn"
+              onClick={onExitAddTextMode}
+              aria-label="Cancel add text mode"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
       {activeObj && isMobileScreen && (
         <MobileTextEditorSheet
@@ -1646,6 +1707,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       {pendingInsert && isMobileScreen && (
         <MobileTextInsertSheet
           initialText={pendingInsert.text}
+          pageNum={pendingInsert.pageNum}
           fontSize={pendingInsert.fontSize}
           onFontSizeChange={(size) =>
             setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
@@ -1671,6 +1733,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           color={pendingInsert.color}
           onColorChange={(hex) =>
             setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
+          }
+          onLiveTextChange={(txt) =>
+            setPendingInsert((prev) => (prev ? { ...prev, text: txt } : null))
           }
           onCommit={(txt) => {
             handleCommitPendingText(txt);

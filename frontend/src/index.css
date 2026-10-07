@@ -6538,4 +6538,161 @@ html.theme-transitioning .find-replace-card {
   border-color: #ef4444;
 }
 
+/* ==========================================================================
+   Add Text Placement Guide Banner & Canvas Target Pin
+   ========================================================================== */
+.add-text-guide-banner {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: rgba(18, 22, 28, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(59, 130, 246, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(37, 99, 235, 0.25);
+  color: #ffffff;
+  animation: bannerSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: calc(100vw - 24px);
+  pointer-events: auto;
+}
+
+[data-theme="light"] .add-text-guide-banner {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+}
+
+.guide-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.guide-pin-icon {
+  font-size: 14px;
+}
+
+.guide-banner-cancel-btn {
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+.guide-banner-cancel-btn:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="light"] .guide-banner-cancel-btn {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #475569;
+}
+
+/* Page highlight when Add Text is active */
+.pdf-page-wrapper.is-add-text-mode {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4), 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  cursor: crosshair !important;
+}
+
+/* Mobile Canvas Target Pin */
+.mobile-insert-target-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: none;
+  transform: translate(-10px, -10px);
+}
+
+.pin-marker-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35), 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  position: relative;
+  z-index: 2;
+  animation: pinBounce 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pin-pulse-ring {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #3b82f6;
+  animation: pinPulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pinPulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+@keyframes pinBounce {
+  0% { transform: translateY(-10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.pin-preview-box {
+  margin-top: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1.5px dashed #2563eb;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  max-width: 260px;
+  word-break: break-word;
+}
+
+[data-theme="dark"] .pin-preview-box {
+  background: rgba(15, 19, 26, 0.95);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.pin-text-preview {
+  display: block;
+  line-height: 1.3;
+}
+
+.mobile-insert-location-hint {
+  font-size: 11.5px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-top: -2px;
+}
+
+
 

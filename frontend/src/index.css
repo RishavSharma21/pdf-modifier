@@ -6809,191 +6809,168 @@ html.theme-transitioning .find-replace-card {
 }
 
 /* ==========================================================================
-   Unified In-Place Text Editor & Floating Context Toolbar (Figma/Apple Style)
+   Responsive Docked Text Formatting Subbar & Clamped WYSIWYG Canvas Input
    ========================================================================== */
-.inline-text-editor-container {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  z-index: 100;
-  user-select: none;
-}
-
-/* Floating Toolbar Capsule */
-.inline-text-floating-toolbar {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
+.text-formatting-subbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.2);
-  border-radius: 9999px;
-  padding: 4px 8px;
-  z-index: 120;
-  white-space: nowrap;
-  animation: floatingToolbarFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  padding: 6px 14px;
+  min-height: 44px;
+  box-sizing: border-box;
+  animation: subbarFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-[data-theme="light"] .inline-text-floating-toolbar {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-}
-
-@keyframes floatingToolbarFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+@keyframes subbarFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.floating-tool-anchor {
-  position: relative;
+.text-formatting-subbar .editor-subbar-left {
   display: flex;
   align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
 }
 
-.floating-tool-divider {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.14);
-  margin: 0 2px;
+.text-formatting-subbar .editor-subbar-left::-webkit-scrollbar {
+  display: none;
 }
 
-[data-theme="light"] .floating-tool-divider {
-  background: rgba(0, 0, 0, 0.1);
+.subbar-mode-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.floating-tool-btn {
+.edit-text-badge {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent);
+}
+
+.subbar-style-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.subbar-color-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.subbar-color-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: #e2e8f0;
-  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  height: 26px;
+}
+
+.subbar-color-group:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.subbar-color-swatch-circle {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.subbar-color-chevron {
+  color: var(--text-3);
+}
+
+.subbar-action-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.12s ease;
-}
-
-[data-theme="light"] .floating-tool-btn {
-  color: #334155;
-}
-
-.floating-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-
-[data-theme="light"] .floating-tool-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #0f172a;
-}
-
-.floating-tool-btn.active {
-  background: rgba(37, 99, 235, 0.25);
-  color: #60a5fa;
-}
-
-.floating-tool-btn.font-btn {
-  max-width: 110px;
-}
-
-.floating-font-name {
-  max-width: 75px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11.5px;
+  flex-shrink: 0;
 }
 
-.floating-chevron {
-  opacity: 0.6;
-}
-
-.floating-tool-btn.icon-btn {
-  width: 28px;
-  justify-content: center;
-  padding: 0;
-}
-
-.floating-tool-btn.color-btn {
-  width: 28px;
-  justify-content: center;
-  padding: 0;
-}
-
-.floating-color-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
-.floating-tool-btn.delete-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.floating-tool-btn.redact-btn:hover {
-  background: rgba(245, 158, 11, 0.2);
+.subbar-redact-tool {
   color: #f59e0b;
 }
 
-.floating-tool-btn.action-commit {
-  background: #2563eb;
-  color: #ffffff;
-  font-weight: 600;
-  padding: 0 10px;
-  border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+.subbar-redact-tool:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: #f59e0b;
 }
 
-.floating-tool-btn.action-commit:hover {
-  background: #1d4ed8;
-  transform: scale(1.02);
-}
-
-.floating-tool-btn.action-cancel {
-  width: 28px;
-  justify-content: center;
-  padding: 0;
-  color: #94a3b8;
-}
-
-.floating-tool-btn.action-cancel:hover {
+.subbar-delete-tool {
   color: #ef4444;
-  background: rgba(239, 68, 68, 0.15);
 }
 
-/* In-Place Input Frame */
-.inline-text-input-frame {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1.5px solid #2563eb;
-  border-radius: 5px;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22), 0 4px 14px rgba(0, 0, 0, 0.12);
-  padding: 1px 4px;
+.subbar-delete-tool:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+}
+
+.subbar-action-label {
+  font-size: 11.5px;
+}
+
+/* Page-Bounded Direct WYSIWYG Canvas Input (Strictly clamped inside PDF bounds) */
+.canvas-inline-text-wrapper {
+  position: absolute;
+  display: inline-flex;
+  align-items: baseline;
+  user-select: none;
+  z-index: 65;
+  pointer-events: auto;
   box-sizing: border-box;
 }
 
-[data-theme="dark"] .inline-text-input-frame {
-  background: rgba(15, 23, 42, 0.92);
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 4px 16px rgba(0, 0, 0, 0.5);
+.canvas-inline-input-frame {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2.5px rgba(37, 99, 235, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 0 3px;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.inline-text-wysiwyg-input {
+[data-theme="dark"] .canvas-inline-input-frame {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2.5px rgba(59, 130, 246, 0.3), 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+
+.canvas-inline-wysiwyg-input {
   width: 100%;
   height: 100%;
   border: none !important;
@@ -7006,7 +6983,7 @@ html.theme-transitioning .find-replace-card {
   caret-color: var(--accent) !important;
 }
 
-.inline-text-wysiwyg-input::placeholder {
+.canvas-inline-wysiwyg-input::placeholder {
   color: rgba(148, 163, 184, 0.6);
   font-style: italic;
   font-size: 0.9em;

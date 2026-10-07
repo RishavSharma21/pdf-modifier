@@ -195,7 +195,7 @@ class PDFAnalyzer:
     # Public API
     # ------------------------------------------------------------------
 
-    def analyze_page(self, page_index: int = 0) -> List[EditableText]:
+    def analyze_page(self, page_index: int = 0, fast: bool = False) -> List[EditableText]:
         """Extract editable text for a page (0-indexed).
 
         Returns one EditableText per logical unit:
@@ -207,7 +207,7 @@ class PDFAnalyzer:
         page = doc[page_index]
         page_num = page_index + 1   # 1-indexed
 
-        page_fonts = self.font_inspector.inspect_page_fonts(page_index)
+        page_fonts = {} if fast else self.font_inspector.inspect_page_fonts(page_index)
 
         # Collect link annotation rects so we can detect "link spans"
         link_rects: List[fitz.Rect] = []

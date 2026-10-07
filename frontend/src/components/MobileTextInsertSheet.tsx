@@ -99,16 +99,9 @@ export const MobileTextInsertSheet: React.FC<MobileTextInsertSheetProps> = ({
   };
 
   return (
-    <div
-      className="mobile-text-edit-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isSubmitting) {
-          onCancel();
-        }
-      }}
-    >
+    <div className="mobile-text-insert-dock" id="mobile-text-insert-dock">
       <div
-        className="mobile-text-edit-sheet mobile-text-insert-sheet"
+        className="mobile-text-insert-card"
         style={{
           transform: viewportBottom > 0 ? `translateY(-${viewportBottom}px)` : undefined,
           maxHeight: viewportBottom > 0 ? `calc(100dvh - ${viewportBottom + 16}px)` : undefined,

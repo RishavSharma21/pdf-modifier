@@ -6694,5 +6694,119 @@ html.theme-transitioning .find-replace-card {
   margin-top: -2px;
 }
 
+/* Mobile Text Insert Floating Dock - Non-modal, clear PDF view */
+.mobile-text-insert-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 220;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none; /* Allow touching the PDF underneath to move pin */
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px)) 12px;
+}
+
+.mobile-text-insert-card {
+  pointer-events: auto;
+  background: rgba(18, 22, 28, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(59, 130, 246, 0.35);
+  border-radius: 20px;
+  box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  padding: 12px 14px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  animation: mobileInsertCardSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+[data-theme="light"] .mobile-text-insert-card {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow: 0 -8px 32px rgba(37, 99, 235, 0.15), 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes mobileInsertCardSlide {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Desktop In-Place Insert Text Box */
+.desktop-inline-insert-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1.5px solid #2563eb;
+  border-radius: 6px;
+  padding: 3px 6px;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  min-width: 140px;
+}
+
+[data-theme="dark"] .desktop-inline-insert-container {
+  background: rgba(15, 23, 42, 0.96);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+.desktop-inline-insert-container .insert-text-canvas-input {
+  border: none !important;
+  border-bottom: none !important;
+  outline: none !important;
+  background: transparent !important;
+  flex: 1;
+  min-width: 80px;
+  padding: 2px 4px !important;
+}
+
+.desktop-inline-insert-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.desktop-inline-insert-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.desktop-inline-insert-action-btn.commit {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.desktop-inline-insert-action-btn.commit:hover {
+  background: #1d4ed8;
+  transform: scale(1.05);
+}
+
+.desktop-inline-insert-action-btn.cancel {
+  background: rgba(100, 116, 139, 0.16);
+  color: var(--text-2);
+}
+
+.desktop-inline-insert-action-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
 
 

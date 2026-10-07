@@ -208,6 +208,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchHandledRef = useRef<boolean>(false);
   const [isNearViewport, setIsNearViewport] = useState<boolean>(pageNum <= 4);
   const [isRendered, setIsRendered] = useState<boolean>(false);
   const renderedDocRef = useRef<any>(null);
@@ -385,6 +386,10 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           const touch = e.changedTouches[0];
           const dist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
           if (dist < 15) {
+            touchHandledRef.current = true;
+            setTimeout(() => {
+              touchHandledRef.current = false;
+            }, 450);
             const rect = containerRef.current?.getBoundingClientRect();
             if (rect) {
               const clickX = Math.round(((touch.clientX - rect.left) / scale) * 10) / 10;
@@ -396,6 +401,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         }
       }}
       onClick={(e) => {
+        if (touchHandledRef.current) return;
         if (isAddTextMode && onNewTextBoxRequest) {
           const rect = containerRef.current?.getBoundingClientRect();
           if (rect) {
@@ -737,6 +743,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               pointerEvents: 'auto',
             }}
             onClick={(e) => {
+              if (touchHandledRef.current) return;
               if (isAddTextMode) {
                 const rect = containerRef.current?.getBoundingClientRect();
                 if (rect && onNewTextBoxRequest) {
@@ -803,36 +810,64 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               </div>
             </div>
           ) : (
-            <input
-              autoFocus
-              type="text"
-              className="insert-text-canvas-input"
-              value={pendingInsert.text}
-              onChange={(e) => onUpdatePendingText?.(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  onCommitPendingText?.();
-                } else if (e.key === 'Escape') {
-                  e.preventDefault();
-                  onCancelPendingText?.();
-                }
-              }}
-              placeholder="Type text here…"
-              style={{
-                fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
-                fontFamily: pendingInsert.fontFamily,
-                fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
-                textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
-                textUnderlineOffset: '2.5px',
-                textDecorationThickness: '1.5px',
-                color: pendingInsert.color,
-              }}
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
+            <div className="desktop-inline-insert-container">
+              <input
+                autoFocus
+                type="text"
+                className="insert-text-canvas-input"
+                value={pendingInsert.text}
+                onChange={(e) => onUpdatePendingText?.(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onCommitPendingText?.();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onCancelPendingText?.();
+                  }
+                }}
+                placeholder="Type text here…"
+                style={{
+                  fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
+                  fontFamily: pendingInsert.fontFamily,
+                  fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
+                  textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
+                  textUnderlineOffset: '2.5px',
+                  textDecorationThickness: '1.5px',
+                  color: pendingInsert.color,
+                }}
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+              />
+              <div className="desktop-inline-insert-actions">
+                <button
+                  type="button"
+                  className="desktop-inline-insert-action-btn commit"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCommitPendingText?.();
+                  }}
+                  title="Add text (Enter)"
+                  aria-label="Add text"
+                >
+                  ✓
+                </button>
+                <button
+                  type="button"
+                  className="desktop-inline-insert-action-btn cancel"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancelPendingText?.();
+                  }}
+                  title="Cancel (Esc)"
+                  aria-label="Cancel"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -1017,7 +1017,7 @@ export function App() {
     }
   };
 
-  // Handle inserting new text at (x, y) with full typography support
+  // Handle inserting new text at (x, y) with full typography support & 0ms instant optimistic placement
   const handleInsertText = async (
     text: string,
     x: number,
@@ -1032,8 +1032,45 @@ export function App() {
     if (!session || !text.trim()) return;
     const targetPage = pageNumber ?? currentPage;
     setLastModifiedPage(targetPage);
+
+    // 1. Instant Optimistic Placement (0ms latency, zero UI freeze!)
+    const optimisticId = `inserted_${Date.now()}`;
+    const cleanHex = (color || '#000000').replace('#', '');
+    const r = cleanHex.length === 6 ? parseInt(cleanHex.slice(0, 2), 16) / 255 : 0;
+    const g = cleanHex.length === 6 ? parseInt(cleanHex.slice(2, 4), 16) / 255 : 0;
+    const b = cleanHex.length === 6 ? parseInt(cleanHex.slice(4, 6), 16) / 255 : 0;
+
+    const optimisticObj: EditableText = {
+      id: optimisticId,
+      text: text.trim(),
+      pageNumber: targetPage,
+      boundingBox: {
+        x,
+        y,
+        width: Math.max(text.trim().length * fontSize * 0.58, 28),
+        height: fontSize * 1.25,
+      },
+      font: {
+        family: fontFamily || 'Helvetica',
+        size: fontSize,
+        weight: fontWeight === 'bold' ? 'bold' : 'normal',
+        style: 'normal',
+        color: [r, g, b],
+        embedded: false,
+        subsetted: false,
+        isCid: false,
+        baseFont: fontFamily || 'Helvetica',
+      },
+      rotation: 0,
+      runs: [],
+    };
+
+    setEditableObjects((prev) => sortEditableTexts([...prev, optimisticObj]));
+    setEditCount((prev) => prev + 1);
+    setRedoCount(0);
+    showToast('Text added', 'success');
+
     try {
-      setIsProcessing(true);
       const res = await insertPdfText(
         session.sessionId,
         targetPage,
@@ -1047,9 +1084,12 @@ export function App() {
         underlined
       );
       pageAnalysisCache.current.delete(targetPage);
-      if (res.textObjects) {
+
+      if (res.textObjects && res.textObjects.length > 0) {
         setEditableObjects((prev) => {
-          const others = prev.filter((o) => (o.pageNumber || 1) !== targetPage);
+          const others = prev.filter(
+            (o) => o.id !== optimisticId && (o.pageNumber || 1) !== targetPage
+          );
           return sortEditableTexts([...others, ...(res.textObjects || [])]);
         });
       }
@@ -1059,14 +1099,38 @@ export function App() {
           return [...others, ...(res.imageObjects || [])];
         });
       }
-      setEditCount((prev) => prev + 1);
-      setRedoCount(0);
-      await refreshPdfDoc(session.sessionId);
-      showToast('Text added', 'success');
+
+      // If backend returned in-memory pdfBase64, parse it with 0 network delay
+      if (res.pdfBase64) {
+        try {
+          const binary = atob(res.pdfBase64);
+          const len = binary.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const freshDoc = await pdfjsLib.getDocument({
+            data: bytes,
+            disableStream: true,
+            disableRange: true,
+            disableAutoFetch: false,
+            cMapUrl: '/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: '/standard_fonts/',
+          }).promise;
+          setSharedPdfDoc(freshDoc);
+          setPdfRefreshKey((prev) => prev + 1);
+        } catch {
+          refreshPdfDoc(session.sessionId);
+        }
+      } else {
+        // Non-blocking background reload
+        refreshPdfDoc(session.sessionId);
+      }
     } catch (err: any) {
+      // Revert optimistic insert on error
+      setEditableObjects((prev) => prev.filter((o) => o.id !== optimisticId));
       showToast(err.message || 'Failed to add text', 'error');
-    } finally {
-      setIsProcessing(false);
     }
   };
 

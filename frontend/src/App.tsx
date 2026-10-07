@@ -1428,32 +1428,34 @@ export function App() {
               onExitAddTextMode={() => setIsAddTextMode(false)}
             />
 
-            <Toolbar
-              currentPage={currentPage}
-              totalPages={session.pageCount}
-              scale={scale}
-              onPageChange={(p) => {
-                setCurrentPage(p);
-                setActiveMatchKey(null);
-                setAllSearchMatchIds([]);
-                setSearchQuery('');
-                const el = document.getElementById(`pdf-page-${p}`);
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
-              onZoomIn={handleZoomIn}
-              onZoomOut={handleZoomOut}
-              onSetScale={(s) => setScale(s)}
-              onFitWidth={handleFitWidth}
-              onFitPage={handleFitPage}
-              onUndo={handleUndo}
-              canUndo={editCount > 0}
-              onRedo={handleRedo}
-              canRedo={redoCount > 0}
-              onOpenPagesSheet={() => setIsMobilePagesOpen(true)}
-              onToggleAddText={() => setIsAddTextMode((v) => !v)}
-              isAddTextMode={isAddTextMode}
-              isMobile={isMobileScreen}
-            />
+            {!isEditingActive && (
+              <Toolbar
+                currentPage={currentPage}
+                totalPages={session.pageCount}
+                scale={scale}
+                onPageChange={(p) => {
+                  setCurrentPage(p);
+                  setActiveMatchKey(null);
+                  setAllSearchMatchIds([]);
+                  setSearchQuery('');
+                  const el = document.getElementById(`pdf-page-${p}`);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                onZoomIn={handleZoomIn}
+                onZoomOut={handleZoomOut}
+                onSetScale={(s) => setScale(s)}
+                onFitWidth={handleFitWidth}
+                onFitPage={handleFitPage}
+                onUndo={handleUndo}
+                canUndo={editCount > 0}
+                onRedo={handleRedo}
+                canRedo={redoCount > 0}
+                onOpenPagesSheet={() => setIsMobilePagesOpen(true)}
+                onToggleAddText={() => setIsAddTextMode((v) => !v)}
+                isAddTextMode={isAddTextMode}
+                isMobile={isMobileScreen}
+              />
+            )}
 
             {isFindReplaceOpen && (
               <FindReplacePanel

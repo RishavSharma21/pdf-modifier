@@ -5082,34 +5082,35 @@ html.theme-transitioning .find-replace-card {
     max-width: calc(100vw - 20px);
   }
 
-  /* 5. In-Line WYSIWYG Subbar on Mobile — Thumb-Friendly Bottom Dock */
+  /* 5. In-Line WYSIWYG Subbar on Mobile — Sleek Top Dock (Immune to Keyboard) */
   .pdf-editor-subbar {
-    position: fixed !important;
-    top: auto !important;
-    bottom: 0 !important;
+    position: sticky !important;
+    top: 0 !important;
+    bottom: auto !important;
     left: 0 !important;
     right: 0 !important;
     width: 100% !important;
-    height: calc(52px + env(safe-area-inset-bottom, 0px)) !important;
-    padding: 0 12px env(safe-area-inset-bottom, 0px) 12px !important;
+    height: auto !important;
+    min-height: 44px !important;
+    padding: 6px 10px !important;
     background: var(--surface-1) !important;
-    border-top: 1px solid var(--border-strong) !important;
-    border-bottom: none !important;
-    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.3) !important;
+    border-bottom: 1px solid var(--border-strong) !important;
+    border-top: none !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
     z-index: 100 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    animation: subbarSlideUp 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    gap: 6px !important;
+    animation: subbarFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
-  @keyframes subbarSlideUp {
-    from { opacity: 0; transform: translateY(100%); }
-    to   { opacity: 1; transform: translateY(0); }
+  .subbar-mode-title {
+    display: none !important; /* Hide verbose title on phones to save space */
   }
 
   .subbar-font-info {
-    display: none !important; /* Hide verbose font pill on phone */
+    display: none !important;
   }
 
   .subbar-font-tags {
@@ -5125,39 +5126,82 @@ html.theme-transitioning .find-replace-card {
   }
 
   .editor-subbar-left {
-    gap: 8px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-right: 4px !important;
+  }
+
+  .editor-subbar-left::-webkit-scrollbar {
+    display: none !important;
   }
 
   .editor-subbar-right {
-    gap: 8px !important;
+    flex-shrink: 0 !important;
+    gap: 5px !important;
+  }
+
+  .subbar-action-save,
+  .subbar-action-cancel {
+    height: 32px !important;
+    padding: 0 10px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+  }
+
+  .subbar-font-trigger {
+    max-width: 95px !important;
+    padding: 3px 6px !important;
+    height: 30px !important;
+  }
+
+  .subbar-font-name {
+    max-width: 60px !important;
+    font-size: 11px !important;
+  }
+
+  .subbar-btn-toggle {
+    width: 30px !important;
+    height: 30px !important;
   }
 
   .subbar-color-group {
-    padding: 5px 10px !important;
-    height: 34px !important;
+    padding: 3px 6px !important;
+    height: 30px !important;
   }
 
-  .subbar-btn-delete {
-    width: 34px !important;
-    height: 34px !important;
-    border-radius: var(--r-sm) !important;
+  .subbar-action-tool {
+    height: 30px !important;
+    padding: 0 7px !important;
   }
 
-  .subbar-btn-cancel {
-    padding: 0 12px !important;
-    height: 34px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
+  /* Popovers on Mobile — Centered Clean Modals under the Top Bar */
+  .pro-font-popover {
+    position: fixed !important;
+    top: 54px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: 55vh !important;
+    z-index: 1000 !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4) !important;
   }
 
-  .subbar-btn-save {
-    padding: 0 14px !important;
-    height: 34px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    background: #2563eb !important;
-    border-color: #1d4ed8 !important;
-    color: #ffffff !important;
+  .pro-color-popover {
+    position: fixed !important;
+    top: 54px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: 65vh !important;
+    overflow-y: auto !important;
+    z-index: 1000 !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4) !important;
   }
 
   /* 6. Find & Replace Panel Mobile Modal */
@@ -6987,6 +7031,7 @@ html.theme-transitioning .find-replace-card {
   box-shadow: none !important;
   line-height: normal !important;
   caret-color: var(--accent) !important;
+  touch-action: manipulation;
 }
 
 .canvas-inline-wysiwyg-input::placeholder {

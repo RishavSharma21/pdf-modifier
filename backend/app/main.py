@@ -46,7 +46,7 @@ def health_check():
     }
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_ping():
     """Lightweight keep-alive endpoint — used by frontend to prevent Render cold starts."""
     return {"ok": True}

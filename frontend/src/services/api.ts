@@ -21,7 +21,7 @@ const API_BASE = getApiBase();
 
 // ── Keep-alive for Render free tier ────────────────────────────────────────
 // Render spins down free services after 15 min of inactivity → cold starts.
-// We ping the /health endpoint every 13 min to keep the server warm.
+// We ping the /health endpoint every 5 min to keep the server warm.
 // Only active on deployed hosts — localhost doesn't need it.
 export function startKeepAlivePing(): void {
   if (typeof window === 'undefined') return;
@@ -29,10 +29,10 @@ export function startKeepAlivePing(): void {
   if (host === 'localhost' || host === '127.0.0.1') return;
 
   const PING_URL = 'https://pdf-modifier-mdag.onrender.com/health';
-  const INTERVAL_MS = 13 * 60 * 1000; // 13 minutes
+  const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
   const ping = () => {
-    fetch(PING_URL, { method: 'HEAD', cache: 'no-store' }).catch(() => {
+    fetch(PING_URL, { method: 'GET', cache: 'no-store' }).catch(() => {
       // Silent — network errors are fine, just fire-and-forget
     });
   };

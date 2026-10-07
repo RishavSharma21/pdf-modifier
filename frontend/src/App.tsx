@@ -438,27 +438,45 @@ export function App() {
   // Background pre-fetch all other document pages so continuous scrolling is instant
   useEffect(() => {
     if (!session || !session.pages || session.pages.length <= 1) return;
+    let isCancelled = false;
+
     const prefetch = async () => {
-      for (const p of session.pages) {
-        if (p.page !== currentPage && !pageAnalysisCache.current.has(p.page)) {
-          try {
-            const res = await analyzePage(session.sessionId, p.page);
-            if (res.textObjects) {
-              pageAnalysisCache.current.set(p.page, {
-                textObjects: res.textObjects,
-                imageObjects: res.imageObjects || [],
-              });
-              setEditableObjects((prev) => {
-                const others = prev.filter((o) => (o.pageNumber || 1) !== p.page);
-                return sortEditableTexts([...others, ...res.textObjects]);
-              });
-            }
-          } catch {}
+      const remainingPages = session.pages.filter(
+        (p) => p.page !== currentPage && !pageAnalysisCache.current.has(p.page)
+      );
+
+      // Fetch in concurrent batches of 3 to avoid backend bottleneck while being 3x faster
+      for (let i = 0; i < remainingPages.length; i += 3) {
+        if (isCancelled) break;
+        const batch = remainingPages.slice(i, i + 3);
+        const results = await Promise.allSettled(
+          batch.map((p) =>
+            analyzePage(session.sessionId, p.page).then((res) => ({ page: p.page, res }))
+          )
+        );
+        if (isCancelled) break;
+
+        for (const item of results) {
+          if (item.status === 'fulfilled' && item.value.res?.textObjects) {
+            const { page, res } = item.value;
+            pageAnalysisCache.current.set(page, {
+              textObjects: res.textObjects,
+              imageObjects: res.imageObjects || [],
+            });
+            setEditableObjects((prev) => {
+              const others = prev.filter((o) => (o.pageNumber || 1) !== page);
+              return sortEditableTexts([...others, ...res.textObjects]);
+            });
+          }
         }
       }
     };
-    const t = setTimeout(prefetch, 250);
-    return () => clearTimeout(t);
+
+    const t = setTimeout(prefetch, 200);
+    return () => {
+      isCancelled = true;
+      clearTimeout(t);
+    };
   }, [session?.sessionId]);
 
   // Calculate dynamic optimal editing ratio (Fit Width) or whole-page overview (Fit Page)

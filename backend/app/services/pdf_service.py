@@ -169,16 +169,14 @@ class PDFService:
         """Analyze a page in a session and return text blocks and fonts."""
         file_path = self.get_session_file_path(session_id)
         analyzer = PDFAnalyzer(file_path)
-        inspector = FontInspector(file_path)
 
         page_idx = page_number - 1
         page_objects = analyzer.analyze_page(page_idx)
         page_images = analyzer.extract_images(page_idx)
-        page_fonts = inspector.inspect_page_fonts(page_idx)
 
         return {
             "page": page_number,
-            "fonts": {k: v.to_dict() for k, v in page_fonts.items()},
+            "fonts": {},
             "textObjects": [obj.to_dict() for obj in page_objects],
             "imageObjects": page_images,
         }

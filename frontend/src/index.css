@@ -4,8 +4,6 @@
    Font: Inter (Google Fonts)
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..800&family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&family=Inter:wght@400;500;600;700&display=swap');
-
 :root,
 [data-theme="light"] {
   /* Surface Colors — Light Mode (Default) */

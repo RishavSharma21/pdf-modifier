@@ -716,6 +716,15 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               pointerEvents: 'auto',
             }}
             onClick={(e) => {
+              if (isAddTextMode) {
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (rect && onNewTextBoxRequest) {
+                  const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
+                  const clickY = Math.round(((e.clientY - rect.top) / scale) * 10) / 10;
+                  onNewTextBoxRequest(clickX, clickY, pageNum);
+                }
+                return;
+              }
               e.stopPropagation();
               onStartEdit(obj);
             }}
@@ -1004,19 +1013,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     });
   };
 
-  const handleCommitPendingText = async () => {
-    if (!pendingInsert || !pendingInsert.text.trim()) {
+  const handleCommitPendingText = async (overrideText?: string) => {
+    const textToInsert = (overrideText !== undefined ? overrideText : pendingInsert?.text || '').trim();
+    if (!pendingInsert || !textToInsert) {
       setPendingInsert(null);
       return;
     }
-    const { text, x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
+    const { x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
     setPendingInsert(null);
     if (isAddTextMode) {
       onExitAddTextMode?.();
     }
     try {
       if (onInsertText) {
-        await onInsertText(text.trim(), x, y, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
+        await onInsertText(textToInsert, x, y, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
       }
     } catch {
       showToast('Failed to insert text', 'error');
@@ -1029,6 +1039,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       onExitAddTextMode?.();
     }
   };
+
+  // On mobile screens, when Add Text mode is triggered, immediately open the insert sheet for the current page
+  useEffect(() => {
+    if (isAddTextMode && isMobileScreen && !pendingInsert && !activeObj) {
+      handleNewTextBoxRequest(54, 72, currentPage);
+    }
+  }, [isAddTextMode, isMobileScreen, currentPage, pendingInsert, activeObj]);
 
   // Preserve scroll position across PDF reloads
   const savedScrollTopRef = useRef<number>(0);
@@ -1561,26 +1578,6 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         </div>
       )}
 
-      {/* Mobile Add Text Mode Floating Banner */}
-      {isAddTextMode && isMobileScreen && !pendingInsert && (
-        <div className="mobile-add-text-banner" id="mobile-add-text-banner">
-          <div className="mobile-add-text-banner-left">
-            <Type size={14} className="banner-type-icon" />
-            <span>Tap anywhere on the page to insert text</span>
-          </div>
-          {onExitAddTextMode && (
-            <button
-              type="button"
-              className="mobile-banner-cancel-btn"
-              onClick={onExitAddTextMode}
-              aria-label="Cancel add text mode"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
       {activeObj && isMobileScreen && (
         <MobileTextEditorSheet
@@ -1676,10 +1673,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
           }
           onCommit={(txt) => {
-            setPendingInsert((prev) => (prev ? { ...prev, text: txt } : null));
-            setTimeout(() => {
-              handleCommitPendingText();
-            }, 30);
+            handleCommitPendingText(txt);
           }}
           onCancel={handleCancelPendingText}
           isSubmitting={isProcessing}

@@ -9,7 +9,6 @@ import {
   Minimize2,
   Undo2,
   Redo2,
-  Layers,
   Type,
 } from 'lucide-react';
 
@@ -101,7 +100,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       )}
 
-      {(onUndo || onRedo) && <div className="toolbar-divider" />}
+      {(onUndo || onRedo) && (
+        <div className={`toolbar-divider toolbar-divider-undo ${!canUndo && !canRedo ? 'mobile-hidden' : ''}`} />
+      )}
 
       {/* Page Stepper */}
       <div className="toolbar-group">
@@ -165,32 +166,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       </div>
 
-      {/* Mobile Pages Sheet Trigger Button */}
-      {onOpenPagesSheet && (
-        <>
-          <button
-            className="toolbar-btn mobile-only-btn mobile-pages-btn"
-            onClick={onOpenPagesSheet}
-            id="btn-mobile-toolbar-pages"
-            title="Pages, Rotate & Delete"
-            aria-label="Pages manager"
-          >
-            <Layers size={14} />
-          </button>
-        </>
-      )}
-
-      {/* Mobile Add Text Mode Toggle Button */}
+      {/* Add Text Mode Toggle Button */}
       {onToggleAddText && (
         <>
+          <div className="toolbar-divider" />
           <button
-            className={`toolbar-btn mobile-only-btn mobile-add-text-btn ${isAddTextMode ? 'active' : ''}`}
+            className={`toolbar-btn toolbar-btn-add-text ${isAddTextMode ? 'active' : ''}`}
             onClick={onToggleAddText}
             id="btn-mobile-toolbar-add-text"
             title="Add text to document"
             aria-label="Add text"
           >
-            <Type size={14} />
+            <Type size={15} />
           </button>
         </>
       )}
@@ -200,7 +187,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* Zoom Controls */}
       <div className="toolbar-group">
         <button
-          className="toolbar-btn"
+          className="toolbar-btn mobile-hide-zoom-stepper"
           onClick={onZoomOut}
           id="btn-zoom-out"
           aria-label="Zoom Out"
@@ -272,7 +259,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         <button
-          className="toolbar-btn"
+          className="toolbar-btn mobile-hide-zoom-stepper"
           onClick={onZoomIn}
           id="btn-zoom-in"
           aria-label="Zoom In"

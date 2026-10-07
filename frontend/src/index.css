@@ -5016,6 +5016,19 @@ html.theme-transitioning .find-replace-card {
     flex-shrink: 0;
   }
 
+  .mobile-hide-zoom-stepper {
+    display: none !important;
+  }
+
+  .toolbar-btn#btn-undo:disabled,
+  .toolbar-btn#btn-redo:disabled {
+    display: none !important;
+  }
+
+  .toolbar-divider-undo.mobile-hidden {
+    display: none !important;
+  }
+
   .page-indicator-btn {
     font-size: 11.5px;
     font-weight: 500;

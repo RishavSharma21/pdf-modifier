@@ -222,7 +222,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     let isCancelled = false;
     const loadSharedDoc = async () => {
       try {
-        const loadingTask = pdfjsLib.getDocument({ url: pdfUrl, disableStream: true });
+        const loadingTask = pdfjsLib.getDocument({
+          url: pdfUrl,
+          disableStream: true,
+          disableRange: true,
+          disableAutoFetch: false,
+          cMapUrl: '/cmaps/',
+          cMapPacked: true,
+          standardFontDataUrl: '/standard_fonts/',
+        });
         const doc = await loadingTask.promise;
         if (!isCancelled) {
           setSharedDoc(doc);

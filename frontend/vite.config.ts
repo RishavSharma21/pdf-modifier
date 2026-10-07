@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: {
+    target: ['es2022', 'safari15', 'ios15'],
     rollupOptions: {
       output: {
         manualChunks(id: string) {

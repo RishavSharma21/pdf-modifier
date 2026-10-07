@@ -156,7 +156,7 @@ export async function redoPdfEdit(sessionId: string): Promise<{ success: boolean
 }
 
 export function getDownloadUrl(sessionId: string): string {
-  return `${API_BASE}/download/${sessionId}?t=${Date.now()}`;
+  return `${API_BASE}/download/${sessionId}`;
 }
 
 export async function insertPdfText(

@@ -30,7 +30,7 @@ import {
 import type { SessionInfo, EditableText, ImageObject } from './types/pdf';
 
 // Ensure PDF.js worker is ready immediately before any getDocument call
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 // Start keep-alive immediately — prevents Render cold starts on deployed site
 startKeepAlivePing();
@@ -589,8 +589,9 @@ export function App() {
             disableStream: true,
             disableRange: true,
             disableAutoFetch: false,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapUrl: '/cmaps/',
             cMapPacked: true,
+            standardFontDataUrl: '/standard_fonts/',
           });
           const doc = await loadingTask.promise;
           setSharedPdfDoc(doc);
@@ -691,12 +692,13 @@ export function App() {
     try {
       const nextKey = Date.now();
       const freshDoc = await pdfjsLib.getDocument({
-        url: `${getDownloadUrl(sessionId)}&v=${nextKey}`,
+        url: `${getDownloadUrl(sessionId)}?v=${nextKey}`,
         disableStream: true,
         disableRange: true,
         disableAutoFetch: false,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+        cMapUrl: '/cmaps/',
         cMapPacked: true,
+        standardFontDataUrl: '/standard_fonts/',
       }).promise;
       setSharedPdfDoc(freshDoc);
       setPdfRefreshKey((prev) => prev + 1);
@@ -809,8 +811,9 @@ export function App() {
             disableStream: true,
             disableRange: true,
             disableAutoFetch: false,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapUrl: '/cmaps/',
             cMapPacked: true,
+            standardFontDataUrl: '/standard_fonts/',
           }).promise;
           setSharedPdfDoc(freshDoc);
           setPdfRefreshKey((prev) => prev + 1);
@@ -1246,7 +1249,7 @@ export function App() {
     }
   };
 
-  const pdfUrl = session ? `${getDownloadUrl(session.sessionId)}&v=${pdfRefreshKey}` : '';
+  const pdfUrl = session ? `${getDownloadUrl(session.sessionId)}?v=${pdfRefreshKey}` : '';
 
   return (
     <div className="app-container">

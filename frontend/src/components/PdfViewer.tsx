@@ -12,7 +12,7 @@ import { Image as ImageIcon, Type } from 'lucide-react';
 import { useToast } from './Toast';
 
 // Set up worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 // Helper: map font attributes to CSS
 const getFontTypography = (font: any) => {
@@ -1049,8 +1049,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           disableStream: true,
           disableRange: true,
           disableAutoFetch: false,
-          cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+          cMapUrl: '/cmaps/',
           cMapPacked: true,
+          standardFontDataUrl: '/standard_fonts/',
         });
         const doc = await loadingTask.promise;
         if (!isCancelled) {

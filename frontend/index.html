@@ -9,6 +9,35 @@
           var theme = (saved === 'dark' || saved === 'light') ? saved : 'light';
           document.documentElement.setAttribute('data-theme', theme);
         } catch (e) {}
+
+        // Global iOS Safari / WebKit Polyfills for PDF.js v6
+        if (typeof Promise.withResolvers === 'undefined') {
+          Promise.withResolvers = function() {
+            var resolve, reject;
+            var promise = new Promise(function(res, rej) { resolve = res; reject = rej; });
+            return { promise: promise, resolve: resolve, reject: reject };
+          };
+        }
+        if (typeof Map !== 'undefined' && typeof Map.prototype.getOrInsertComputed === 'undefined') {
+          Map.prototype.getOrInsertComputed = function(key, fn) {
+            if (this.has(key)) return this.get(key);
+            var val = fn(key);
+            this.set(key, val);
+            return val;
+          };
+        }
+        if (typeof Map !== 'undefined' && typeof Map.prototype.getOrInsert === 'undefined') {
+          Map.prototype.getOrInsert = function(key, defVal) {
+            if (this.has(key)) return this.get(key);
+            this.set(key, defVal);
+            return defVal;
+          };
+        }
+        if (typeof URL !== 'undefined' && typeof URL.parse !== 'function') {
+          URL.parse = function(url, base) {
+            try { return new URL(url, base); } catch(e) { return null; }
+          };
+        }
       })();
     </script>
     <style id="theme-preload-style">

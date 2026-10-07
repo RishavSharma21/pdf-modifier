@@ -23,6 +23,9 @@ class EditRequest(BaseModel):
     targetTextId: Optional[str] = None
     boundingBox: Optional[dict] = None
     origin: Optional[list] = None
+    underlined: Optional[bool] = None
+    fontSize: Optional[float] = None
+    fontFamily: Optional[str] = None
 
 
 class UndoRequest(BaseModel):
@@ -43,12 +46,31 @@ class InsertTextRequest(BaseModel):
     fontWeight: str = "normal"
     fontFamily: str = "Helvetica"
     color: Optional[str] = None
+    underlined: Optional[bool] = None
 
 
 class DeleteImageRequest(BaseModel):
     sessionId: str
     page: int = 1
     boundingBox: dict
+
+
+class RotatePageRequest(BaseModel):
+    sessionId: str
+    page: int = 1
+    angle: int = 90
+
+
+class DeletePageRequest(BaseModel):
+    sessionId: str
+    page: int = 1
+
+
+class RedactRequest(BaseModel):
+    sessionId: str
+    page: int = 1
+    boundingBox: dict
+    fillColor: Optional[str] = "#000000"
 
 
 @router.post("/upload")
@@ -110,6 +132,9 @@ async def edit_text(req: EditRequest):
             target_text_id=req.targetTextId,
             bounding_box=req.boundingBox,
             origin=req.origin,
+            underlined=req.underlined,
+            font_size=req.fontSize,
+            font_family=req.fontFamily,
         )
         print(f"[EDIT RESULT] success={result.get('success')}, error={result.get('error')}, strategy={result.get('strategy')}")
         if not result["success"]:
@@ -162,7 +187,8 @@ async def insert_text(req: InsertTextRequest):
             font_size=req.fontSize,
             font_weight=req.fontWeight,
             font_family=req.fontFamily,
-            color=req.color
+            color=req.color,
+            underlined=req.underlined
         )
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error", "Insert text failed"))
@@ -253,6 +279,64 @@ async def adjust_or_replace_image(
         raise HTTPException(status_code=500, detail=f"Error replacing/adjusting image: {e}")
 
 
+@router.post("/rotate-page")
+async def rotate_page(req: RotatePageRequest):
+    """Rotate a page in the active PDF session."""
+    try:
+        result = service.rotate_page(
+            session_id=req.sessionId,
+            page_number=req.page,
+            angle=req.angle
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error", "Rotate page failed"))
+        return result
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error rotating page: {e}")
+
+
+@router.post("/delete-page")
+async def delete_page(req: DeletePageRequest):
+    """Delete a page from the active PDF session."""
+    try:
+        result = service.delete_page(
+            session_id=req.sessionId,
+            page_number=req.page
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error", "Delete page failed"))
+        return result
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting page: {e}")
+
+
+@router.post("/redact")
+async def redact_content(req: RedactRequest):
+    """Permanently redact (blackout) an area from the PDF."""
+    try:
+        result = service.redact_area(
+            session_id=req.sessionId,
+            page_number=req.page,
+            bounding_box=req.boundingBox,
+            fill_color=req.fillColor
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error", "Redact failed"))
+        return result
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing redaction: {e}")
 
 
 @router.get("/download/{session_id}")

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Layers, ChevronLeft, ChevronRight, RotateCw, Trash2 } from 'lucide-react';
 import type { PageMeta } from '../types/pdf';
 
 interface SidebarProps {
@@ -8,76 +8,120 @@ interface SidebarProps {
   currentPage: number;
   pdfUrl: string;
   pdfDoc?: any;
+  modifiedPage?: number | null;
   onPageSelect: (pageNumber: number) => void;
+  onRotatePage?: (pageNumber: number) => void;
+  onDeletePage?: (pageNumber: number) => void;
 }
 
 const PageThumbnail: React.FC<{
   pdfDoc: any;
   pageNum: number;
+  pageMeta?: PageMeta;
   isActive: boolean;
+  canDelete: boolean;
+  modifiedPage?: number | null;
   onClick: () => void;
-}> = React.memo(({ pdfDoc, pageNum, isActive, onClick }) => {
+  onRotate?: () => void;
+  onDelete?: () => void;
+}> = React.memo(({ pdfDoc, pageNum, pageMeta, isActive, canDelete, modifiedPage, onClick, onRotate, onDelete }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
   const [isThumbRendered, setIsThumbRendered] = useState(false);
+  const hasRenderedRef = useRef(false);
+  const renderedDocRef = useRef<any>(null);
+  const renderedRotationRef = useRef<number>(pageMeta?.rotation ?? 0);
 
   useEffect(() => {
     if (!canvasRef.current || !pdfDoc) return;
+
+    // If already rendered once and an edit occurred on a DIFFERENT page (and rotation unchanged), skip re-render!
+    if (
+      hasRenderedRef.current &&
+      renderedDocRef.current !== pdfDoc &&
+      renderedRotationRef.current === (pageMeta?.rotation ?? 0) &&
+      modifiedPage !== null &&
+      modifiedPage !== undefined &&
+      modifiedPage !== pageNum
+    ) {
+      renderedDocRef.current = pdfDoc;
+      return;
+    }
+
     let cancelled = false;
 
-    // Stagger initial render so page 1 renders immediately (0ms), followed quickly by subsequent pages
-    const delay = pageNum === 1 ? 0 : Math.min((pageNum - 1) * 35, 300);
-    const timer = setTimeout(() => {
-      const render = async () => {
-        try {
-          const page = await pdfDoc.getPage(pageNum);
-          if (cancelled) return;
-          const canvas = canvasRef.current;
-          if (!canvas) return;
+    const render = async () => {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        if (cancelled) return;
 
-          const baseScale = 0.45;
-          const viewport = page.getViewport({ scale: baseScale });
-          const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const baseScale = 0.45;
+        const pageRotation = pageMeta?.rotation ?? 0;
+        const viewport = page.getViewport({ scale: baseScale, rotation: pageRotation });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.floor(viewport.width * outputScale);
+        const h = Math.floor(viewport.height * outputScale);
 
-          canvas.width = Math.floor(viewport.width * outputScale);
-          canvas.height = Math.floor(viewport.height * outputScale);
+        // Double-buffering: render to offscreen canvas so visible canvas never blanks out or flickers!
+        const offscreen = document.createElement('canvas');
+        offscreen.width = w;
+        offscreen.height = h;
+        const offCtx = offscreen.getContext('2d');
+        if (!offCtx) return;
+        offCtx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch {}
+        }
+
+        const renderTask = page.render({ canvasContext: offCtx, viewport });
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+
+        if (cancelled) return;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        // Only adjust visible canvas dimensions if they changed (resizing wipes pixels)
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
           canvas.style.width = '100%';
           canvas.style.height = '100%';
-
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-
-          if (renderTaskRef.current) {
-            try {
-              renderTaskRef.current.cancel();
-            } catch {}
-          }
-
-          const renderTask = page.render({ canvasContext: ctx, viewport });
-          renderTaskRef.current = renderTask;
-          await renderTask.promise;
-
-          if (!cancelled) {
-            setIsThumbRendered(true);
-          }
-        } catch {
-          // Task cancelled or page error
         }
-      };
-      render();
-    }, delay);
+
+        // Blit offscreen buffer to visible canvas in a single instant frame
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(offscreen, 0, 0);
+        }
+
+        renderedDocRef.current = pdfDoc;
+        renderedRotationRef.current = pageRotation;
+        hasRenderedRef.current = true;
+        setIsThumbRendered(true);
+      } catch {
+        // Task cancelled or page error
+      }
+    };
+    render();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
         } catch {}
       }
     };
-  }, [pdfDoc, pageNum]);
+  }, [pdfDoc, pageNum, pageMeta?.rotation, modifiedPage]);
+
+  const isLandscape = (pageMeta?.width || 595) > (pageMeta?.height || 842);
+  const targetAspect = isLandscape ? '1.414 / 1' : '1 / 1.414';
 
   return (
     <div
@@ -85,20 +129,18 @@ const PageThumbnail: React.FC<{
       onClick={onClick}
       id={`thumbnail-page-${pageNum}`}
     >
-      <div className="thumb-preview" style={{ position: 'relative', overflow: 'hidden' }}>
+      <div className="thumb-preview" style={{ aspectRatio: targetAspect, position: 'relative' }}>
         <canvas
           ref={canvasRef}
           style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
+            width: '100%',
+            height: '100%',
             display: 'block',
             opacity: isThumbRendered ? 1 : 0,
-            transition: 'opacity 0.2s ease',
           }}
         />
         {!isThumbRendered && (
           <div className="thumb-skeleton" style={{ position: 'absolute', inset: 0 }}>
-            <div className="skeleton-shimmer-wave" />
             <div className="thumb-skeleton-mock">
               <div className="skeleton-line" style={{ width: '45%', height: 6, marginBottom: 4 }} />
               <div className="skeleton-line" style={{ width: '90%', height: 4 }} />
@@ -108,6 +150,39 @@ const PageThumbnail: React.FC<{
             </div>
           </div>
         )}
+        <div className="thumb-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="thumb-action-btn thumb-action-rotate"
+            aria-label="Rotate page"
+            title="Rotate 90° clockwise"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRotate?.();
+            }}
+            id={`btn-rotate-page-${pageNum}`}
+          >
+            <RotateCw size={11} className="thumb-icon-rotate" />
+          </button>
+          {canDelete && (
+            <>
+              <div className="thumb-action-divider" />
+              <button
+                type="button"
+                className="thumb-action-btn thumb-action-delete"
+                aria-label="Delete page"
+                title="Delete page"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete?.();
+                }}
+                id={`btn-delete-page-${pageNum}`}
+              >
+                <Trash2 size={11} className="thumb-icon-delete" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div className="thumb-label">Page {pageNum}</div>
     </div>
@@ -119,7 +194,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentPage,
   pdfUrl,
   pdfDoc: externalPdfDoc,
+  modifiedPage,
   onPageSelect,
+  onRotatePage,
+  onDeletePage,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [sharedDoc, setSharedDoc] = useState<any>(null);
@@ -160,7 +238,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (collapsed) return;
     const thumbEl = document.getElementById(`thumbnail-page-${currentPage}`);
     if (thumbEl) {
-      thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      thumbEl.scrollIntoView({ behavior: 'auto', block: 'nearest' });
     }
   }, [currentPage, collapsed]);
 
@@ -173,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className="sidebar-collapse-btn"
             onClick={() => setCollapsed((v) => !v)}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             id="btn-sidebar-toggle"
           >
             {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -188,8 +266,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={p.page}
               pdfDoc={sharedDoc}
               pageNum={p.page}
+              pageMeta={p}
               isActive={p.page === currentPage}
+              canDelete={pages.length > 1}
+              modifiedPage={modifiedPage}
               onClick={() => onPageSelect(p.page)}
+              onRotate={() => onRotatePage?.(p.page)}
+              onDelete={() => onDeletePage?.(p.page)}
             />
           ))}
         </div>

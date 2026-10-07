@@ -83,3 +83,121 @@ def test_form_line_and_underline_preservation(tmp_path):
     assert len(line_103) >= 1, "The form underline at y=103 was erased or broken into pieces!"
     
     doc_out.close()
+
+
+def test_underscore_fill_line_redrawn_unbroken(tmp_path):
+    """Verify that editing text on an underscore line (e.g., Signature: ________________) draws continuous underline."""
+    test_pdf = str(tmp_path / "sig_input.pdf")
+    out_pdf = str(tmp_path / "sig_output.pdf")
+    
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text(fitz.Point(50, 100), "Signature: ______________________________", fontsize=12)
+    doc.save(test_pdf)
+    doc.close()
+    
+    engine = PDFModificationEngine()
+    # User edits to put 'Rishav Sharma' into the underline
+    res = engine.modify_text(
+        input_pdf_path=test_pdf,
+        output_pdf_path=out_pdf,
+        search_text="Signature: ______________________________",
+        replacement_text="Signature: Rishav Sharma________________",
+        page_number=1,
+        underlined=True
+    )
+    assert res.success
+    
+    doc_out = fitz.open(out_pdf)
+    p = doc_out[0]
+    out_text = p.get_text()
+    assert "Rishav Sharma" in out_text
+    assert "____" not in out_text, f"Underscore placeholders should be stripped from text: {out_text}"
+    
+    # Check that a continuous vector line drawing was rendered under the signature text
+    drawings = p.get_drawings()
+    underline_lines = [d for d in drawings if abs(d["rect"].y0 - 100.0) < 5.0 and d["rect"].width > 50]
+    assert len(underline_lines) >= 1, "Expected vector underline drawn under the signature text to prevent broken line"
+    doc_out.close()
+
+    # Second edit on the same signature line: 'Signature: Rishav Sharma' -> 'Signature: Elena Rostova'
+    out_pdf2 = str(tmp_path / "sig_output2.pdf")
+    res2 = engine.modify_text(
+        input_pdf_path=out_pdf,
+        output_pdf_path=out_pdf2,
+        search_text="Signature: Rishav Sharma",
+        replacement_text="Signature: Elena Rostova",
+        page_number=1,
+        underlined=True
+    )
+    assert res2.success, f"Second signature edit failed: {res2.error}"
+    doc_out2 = fitz.open(out_pdf2)
+    p2 = doc_out2[0]
+    out_text2 = p2.get_text()
+    assert "Elena Rostova" in out_text2
+    assert "Rishav" not in out_text2
+    assert "____" not in out_text2
+    drawings2 = p2.get_drawings()
+    underline_lines2 = [d for d in drawings2 if abs(d["rect"].y0 - 100.0) < 5.0 and d["rect"].width > 50]
+    assert len(underline_lines2) >= 1, "Continuous underline should stay unbroken after second signature edit"
+    doc_out2.close()
+
+
+def test_headline_sequential_edits(tmp_path):
+    """Verify that headlines can be edited sequentially without font shrinkage or losing the bounding box."""
+    test_pdf = str(tmp_path / "headline_input.pdf")
+    out_pdf1 = str(tmp_path / "headline_out1.pdf")
+    out_pdf2 = str(tmp_path / "headline_out2.pdf")
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text(fitz.Point(50, 100), "3. Primary Contacts & Approvals", fontsize=14)
+    doc.save(test_pdf)
+    doc.close()
+
+    from core.pdf.analyzer import PDFAnalyzer
+    a1 = PDFAnalyzer(test_pdf)
+    objs1 = a1.analyze_page(0)
+    assert len(objs1) >= 1
+    h1 = objs1[0]
+    assert h1.font.size == 14.0
+
+    engine = PDFModificationEngine()
+    # Edit 1: update heading text
+    res1 = engine.modify_text(
+        input_pdf_path=test_pdf,
+        output_pdf_path=out_pdf1,
+        search_text=h1.text,
+        replacement_text="3. Primary Contacts & Approvals (Updated)",
+        page_number=1,
+        target_text_id=h1.id,
+        bounding_box=h1.bounding_box
+    )
+    assert res1.success
+
+    a2 = PDFAnalyzer(out_pdf1)
+    objs2 = a2.analyze_page(0)
+    h2 = [o for o in objs2 if "Primary Contacts" in o.text][0]
+    assert "(Updated)" in h2.text
+    # Heading font should NOT be excessively shrunken down
+    assert h2.font.size >= 13.0, f"Headline was shrunken down: {h2.font.size}"
+
+    # Edit 2: update heading text a second time
+    res2 = engine.modify_text(
+        input_pdf_path=out_pdf1,
+        output_pdf_path=out_pdf2,
+        search_text=h2.text,
+        replacement_text="3. Primary Contacts & Approvals (Finalized)",
+        page_number=1,
+        target_text_id=h2.id,
+        bounding_box=h2.bounding_box
+    )
+    assert res2.success
+
+    a3 = PDFAnalyzer(out_pdf2)
+    objs3 = a3.analyze_page(0)
+    h3 = [o for o in objs3 if "Primary Contacts" in o.text][0]
+    assert "(Finalized)" in h3.text
+    assert h3.font.size >= 13.0
+
+

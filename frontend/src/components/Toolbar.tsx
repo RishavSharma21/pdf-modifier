@@ -73,7 +73,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onUndo}
           disabled={!canUndo}
           id="btn-undo"
-          title={canUndo ? 'Undo Last Edit (Ctrl+Z)' : 'No edits to undo'}
           aria-label="Undo"
         >
           <Undo2 size={15} />
@@ -86,7 +85,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onRedo}
           disabled={!canRedo}
           id="btn-redo"
-          title={canRedo ? 'Redo Last Edit (Ctrl+Y)' : 'No edits to redo'}
           aria-label="Redo"
         >
           <Redo2 size={15} />
@@ -102,7 +100,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           disabled={currentPage <= 1}
           onClick={() => onPageChange(currentPage - 1)}
           id="btn-prev-page"
-          title="Previous Page (←)"
           aria-label="Previous Page"
         >
           <ChevronLeft size={15} />
@@ -148,7 +145,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           disabled={currentPage >= totalPages}
           onClick={() => onPageChange(currentPage + 1)}
           id="btn-next-page"
-          title="Next Page (→)"
           aria-label="Next Page"
         >
           <ChevronRight size={15} />
@@ -163,7 +159,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="toolbar-btn"
           onClick={onZoomOut}
           id="btn-zoom-out"
-          title="Zoom Out (Ctrl -)"
           aria-label="Zoom Out"
         >
           <ZoomOut size={15} />
@@ -175,7 +170,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             className="zoom-indicator-btn"
             id="zoom-indicator"
             onClick={() => setIsZoomMenuOpen((v) => !v)}
-            title="Zoom options (Click for presets)"
             aria-expanded={isZoomMenuOpen}
           >
             <span>{Math.round(scale * 100)}%</span>
@@ -237,7 +231,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="toolbar-btn"
           onClick={onZoomIn}
           id="btn-zoom-in"
-          title="Zoom In (Ctrl +)"
           aria-label="Zoom In"
         >
           <ZoomIn size={15} />
@@ -252,7 +245,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="toolbar-btn"
           onClick={onFitWidth}
           id="btn-fit-width"
-          title="Fit to Width (Ctrl+0)"
           aria-label="Fit to Width"
         >
           <Maximize2 size={14} />
@@ -262,7 +254,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="toolbar-btn"
           onClick={onFitPage}
           id="btn-fit-page"
-          title="Fit to Page (Ctrl+9)"
           aria-label="Fit to Page"
         >
           <Minimize2 size={14} />

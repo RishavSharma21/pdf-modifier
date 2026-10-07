@@ -1,31 +1,53 @@
 import React, { useState } from 'react';
-import { Type, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { Trash2, Loader2, ChevronDown, EyeOff, Underline, Type } from 'lucide-react';
 import type { EditableText } from '../types/pdf';
 import { ColorPickerPopover } from './ColorPickerPopover';
+import { FontPickerPopover } from './FontPickerPopover';
+import { FontSizeControl } from './FontSizeControl';
 
 interface InlineEditorBarProps {
   textObject: EditableText;
   selectedColor: string;
   onSelectColor: (hex: string) => void;
+  fontFamily: string;
+  onFontFamilyChange: (family: string) => void;
+  fontSize: number;
+  onFontSizeChange: (newSize: number) => void;
   onCommit: () => void;
   onCancel: () => void;
   onDeleteLine: () => void;
+  onRedactLine?: () => void;
   isSubmitting?: boolean;
+  isUnderlined?: boolean;
+  onToggleUnderline?: () => void;
+  onAddTextClick?: () => void;
 }
 
 export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
   textObject,
   selectedColor,
   onSelectColor,
+  fontFamily,
+  onFontFamilyChange,
+  fontSize,
+  onFontSizeChange,
   onCommit,
   onCancel,
   onDeleteLine,
+  onRedactLine,
   isSubmitting = false,
+  isUnderlined = false,
+  onToggleUnderline,
+  onAddTextClick,
 }) => {
   const [isColorPickerOpen, setIsColorPickerOpen] = useState<boolean>(false);
+  const [isFontPickerOpen, setIsFontPickerOpen] = useState<boolean>(false);
+
   const origColorRgb = textObject.font.color || [0, 0, 0];
   const origColorHex = `#${Math.round(origColorRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origColorRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origColorRgb[2] * 255).toString(16).padStart(2, '0')}`;
   const currentColor = selectedColor || origColorHex;
+  const currentFontFamily = fontFamily || textObject.font.family || 'Helvetica';
+  const displayFontName = currentFontFamily.split(',')[0].replace(/['"]/g, '').trim();
 
   return (
     <div
@@ -33,20 +55,19 @@ export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
       onClick={(e) => e.stopPropagation()}
       id="pdf-editor-subbar"
     >
-      {/* Left controls: Text metadata, color, delete */}
+      {/* Left controls: Color, font family, font size stepper, formatting, redact, delete */}
       <div className="editor-subbar-left">
-        <div className="subbar-icon-badge" title="Editing Text Line">
-          <Type size={15} />
-        </div>
-
         {/* Professional Color Swatch Picker */}
         <div className="subbar-color-anchor">
           <button
             type="button"
             className={`subbar-color-group ${isColorPickerOpen ? 'active' : ''}`}
-            onClick={() => setIsColorPickerOpen((prev) => !prev)}
-            title={`Text Color: ${currentColor} (Click to choose color)`}
+            onClick={() => {
+              setIsColorPickerOpen((prev) => !prev);
+              setIsFontPickerOpen(false);
+            }}
             id="btn-subbar-color-picker"
+            aria-label="Text color"
           >
             <span
               className="subbar-color-preview"
@@ -69,22 +90,75 @@ export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
 
         <div className="subbar-divider" />
 
-        {/* Font Family & Size Pill */}
-        <div className="subbar-font-info">
-          <span className="subbar-font-name">{textObject.font.family || 'Helvetica'}</span>
-          <span className="subbar-font-dot">•</span>
-          <span className="subbar-font-size">{Math.round(textObject.font.size * 10) / 10} pt</span>
+        {/* Professional Typography Font Dropdown */}
+        <div className="subbar-font-anchor">
+          <button
+            type="button"
+            className={`subbar-font-trigger ${isFontPickerOpen ? 'active' : ''}`}
+            onClick={() => {
+              setIsFontPickerOpen((prev) => !prev);
+              setIsColorPickerOpen(false);
+            }}
+            id="btn-subbar-font-picker"
+            aria-label="Font family"
+          >
+            <Type size={12} className="subbar-font-icon" />
+            <span className="subbar-font-name">{displayFontName}</span>
+            <ChevronDown size={12} className={`subbar-font-chevron ${isFontPickerOpen ? 'open' : ''}`} />
+          </button>
+
+          <FontPickerPopover
+            currentFont={currentFontFamily}
+            documentFont={textObject.font.family}
+            onSelectFont={(newFamily) => {
+              onFontFamilyChange(newFamily);
+            }}
+            isOpen={isFontPickerOpen}
+            onClose={() => setIsFontPickerOpen(false)}
+          />
         </div>
 
-        {/* Font Style Indicators */}
-        {(textObject.font.weight === 'bold' || textObject.font.style === 'italic') && (
-          <div className="subbar-font-tags">
-            {textObject.font.weight === 'bold' && <span className="subbar-tag">B</span>}
-            {textObject.font.style === 'italic' && <span className="subbar-tag">I</span>}
-          </div>
-        )}
+        {/* Font Size Control (Stepper + Direct Input) */}
+        <FontSizeControl
+          fontSize={fontSize}
+          onFontSizeChange={onFontSizeChange}
+          min={6}
+          max={96}
+          idPrefix="subbar"
+        />
+
+        {/* Font Style Indicators & Underline Toggle */}
+        <div className="subbar-font-tags">
+          {textObject.font.weight === 'bold' && <span className="subbar-tag">B</span>}
+          {textObject.font.style === 'italic' && <span className="subbar-tag">I</span>}
+          {onToggleUnderline && (
+            <button
+              type="button"
+              className={`subbar-tag-btn ${isUnderlined ? 'active' : ''}`}
+              onClick={onToggleUnderline}
+              aria-label="Toggle Underline"
+              id="btn-subbar-underline"
+            >
+              <Underline size={11} />
+            </button>
+          )}
+        </div>
 
         <div className="subbar-divider" />
+
+        {/* Redact / Blackout Line Button */}
+        {onRedactLine && (
+          <button
+            type="button"
+            className="subbar-btn subbar-btn-redact"
+            onClick={onRedactLine}
+            disabled={isSubmitting}
+            aria-label="Redact text"
+            id="btn-subbar-redact"
+          >
+            <EyeOff size={15} />
+          </button>
+        )}
 
         {/* Delete Line Button */}
         <button
@@ -92,49 +166,61 @@ export const InlineEditorBar: React.FC<InlineEditorBarProps> = ({
           className="subbar-btn subbar-btn-delete"
           onClick={onDeleteLine}
           disabled={isSubmitting}
-          title="Delete this text line from PDF"
+          aria-label="Delete line"
           id="btn-subbar-delete"
         >
           <Trash2 size={15} />
         </button>
+
+        {/* Add Text Quick Action on Subbar */}
+        {onAddTextClick && (
+          <>
+            <div className="subbar-divider" />
+            <button
+              type="button"
+              className="subbar-btn subbar-btn-add-text"
+              onClick={onAddTextClick}
+              aria-label="Add text"
+              id="btn-subbar-add-text-inline"
+            >
+              <Type size={13} />
+              <span>Add Text</span>
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Right controls: Cancel, Save & Close */}
+      {/* Right controls: Clean, professional Cancel & Save actions */}
       <div className="editor-subbar-right">
-        <span className="subbar-kbd-hint">
-          <kbd>↵</kbd> save <span className="subbar-kbd-sep">•</span> <kbd>Esc</kbd> cancel
-        </span>
-
         <button
           type="button"
-          className="subbar-btn subbar-btn-cancel"
+          className="subbar-action-cancel"
           onClick={onCancel}
           disabled={isSubmitting}
-          title="Discard changes (Esc)"
           id="btn-subbar-cancel"
+          aria-label="Cancel editing"
         >
           Cancel
         </button>
 
         <button
           type="button"
-          className="subbar-btn subbar-btn-save"
+          className="subbar-action-save"
           onClick={onCommit}
           disabled={isSubmitting}
-          title="Apply edit to PDF (Enter)"
           id="btn-subbar-save"
+          aria-label="Save changes"
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={14} className="spin" />
+              <Loader2 size={13} className="spin" />
               <span>Saving...</span>
             </>
           ) : (
-            <span>Save &amp; Close</span>
+            <span>Save</span>
           )}
         </button>
       </div>
     </div>
   );
 };
-

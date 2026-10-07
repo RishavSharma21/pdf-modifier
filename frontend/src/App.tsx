@@ -16,6 +16,10 @@ import {
   editPdfText,
   deletePdfImage,
   adjustPdfImage,
+  rotatePdfPage,
+  deletePdfPage,
+  redactPdfArea,
+  insertPdfText,
   undoPdfEdit,
   redoPdfEdit,
   getDownloadUrl,
@@ -25,6 +29,21 @@ import type { SessionInfo, EditableText, ImageObject } from './types/pdf';
 
 // Start keep-alive immediately — prevents Render cold starts on deployed site
 startKeepAlivePing();
+
+// Helper to keep text objects sorted stably in document reading order
+export const sortEditableTexts = (arr: EditableText[]): EditableText[] => {
+  return [...arr].sort((a, b) => {
+    const pA = a.pageNumber || 1;
+    const pB = b.pageNumber || 1;
+    if (pA !== pB) return pA - pB;
+    const yA = a.boundingBox?.y || 0;
+    const yB = b.boundingBox?.y || 0;
+    if (Math.abs(yA - yB) > 2) return yA - yB;
+    const xA = a.boundingBox?.x || 0;
+    const xB = b.boundingBox?.x || 0;
+    return xA - xB;
+  });
+};
 
 export function App() {
   const { showToast } = useToast();
@@ -47,6 +66,8 @@ export function App() {
   const [allSearchMatchIds, setAllSearchMatchIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditingActive, setIsEditingActive] = useState<boolean>(false);
+  const [isAddTextMode, setIsAddTextMode] = useState<boolean>(false);
+  const [lastModifiedPage, setLastModifiedPage] = useState<number | null>(null);
 
   // Light / Dark Theme Management with LocalStorage Persistence (Default: Light)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -225,6 +246,16 @@ export function App() {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  // Completely skip hover tooltips across the editor for a clean, distraction-free UI
+  useEffect(() => {
+    const suppressNativeTooltips = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement)?.closest('[title]') as HTMLElement | null;
+      if (el) el.removeAttribute('title');
+    };
+    document.addEventListener('mouseover', suppressNativeTooltips, true);
+    return () => document.removeEventListener('mouseover', suppressNativeTooltips, true);
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Global keyboard shortcuts — ref pattern avoids stale closures.
   // keyStateRef is updated every render so handlers always see current state.
@@ -276,6 +307,18 @@ export function App() {
         e.preventDefault();
         if (s.session) setIsFindReplaceOpen((v) => !v);
         return;
+      }
+
+      // T — Toggle Add Text mode
+      if (!ctrl && !e.altKey && (e.key === 't' || e.key === 'T') && s.session) {
+        e.preventDefault();
+        setIsAddTextMode((v) => !v);
+        return;
+      }
+
+      // Escape — Exit Add Text mode
+      if (e.key === 'Escape') {
+        setIsAddTextMode(false);
       }
 
       // Ctrl++ or Ctrl+= — Zoom In
@@ -348,8 +391,18 @@ export function App() {
     // Fast Path: If page data is already cached, apply immediately in 0ms!
     const cached = pageAnalysisCache.current.get(currentPage);
     if (cached) {
-      setEditableObjects(cached.textObjects);
-      setImageObjects(cached.imageObjects);
+      setEditableObjects((prev) => {
+        const hasCurrentPage = prev.some((o) => (o.pageNumber || 1) === currentPage);
+        if (hasCurrentPage) return prev;
+        const others = prev.filter((o) => (o.pageNumber || 1) !== currentPage);
+        return sortEditableTexts([...others, ...cached.textObjects]);
+      });
+      setImageObjects((prev) => {
+        const hasCurrentPage = prev.some((img: any) => (img.pageNumber || 1) === currentPage);
+        if (hasCurrentPage) return prev;
+        const others = prev.filter((img: any) => (img.pageNumber || 1) !== currentPage);
+        return [...others, ...cached.imageObjects];
+      });
       return;
     }
 
@@ -362,8 +415,14 @@ export function App() {
           const texts = res.textObjects || [];
           const images = res.imageObjects || [];
           pageAnalysisCache.current.set(currentPage, { textObjects: texts, imageObjects: images });
-          setEditableObjects(texts);
-          setImageObjects(images);
+          setEditableObjects((prev) => {
+            const others = prev.filter((o) => (o.pageNumber || 1) !== currentPage);
+            return sortEditableTexts([...others, ...texts]);
+          });
+          setImageObjects((prev) => {
+            const others = prev.filter((img: any) => (img.pageNumber || 1) !== currentPage);
+            return [...others, ...images];
+          });
         }
       } catch (err) {
         console.error('Failed to analyze page:', err);
@@ -375,6 +434,32 @@ export function App() {
       isMounted = false;
     };
   }, [session?.sessionId, currentPage]);
+
+  // Background pre-fetch all other document pages so continuous scrolling is instant
+  useEffect(() => {
+    if (!session || !session.pages || session.pages.length <= 1) return;
+    const prefetch = async () => {
+      for (const p of session.pages) {
+        if (p.page !== currentPage && !pageAnalysisCache.current.has(p.page)) {
+          try {
+            const res = await analyzePage(session.sessionId, p.page);
+            if (res.textObjects) {
+              pageAnalysisCache.current.set(p.page, {
+                textObjects: res.textObjects,
+                imageObjects: res.imageObjects || [],
+              });
+              setEditableObjects((prev) => {
+                const others = prev.filter((o) => (o.pageNumber || 1) !== p.page);
+                return sortEditableTexts([...others, ...res.textObjects]);
+              });
+            }
+          } catch {}
+        }
+      }
+    };
+    const t = setTimeout(prefetch, 250);
+    return () => clearTimeout(t);
+  }, [session?.sessionId]);
 
   // Calculate dynamic optimal editing ratio (Fit Width) or whole-page overview (Fit Page)
   const calculateOptimalScale = useCallback(
@@ -460,6 +545,7 @@ export function App() {
   const handleFileSelected = async (file: File) => {
     try {
       setIsLoading(true);
+      setLastModifiedPage(null);
 
       // Instantly start reading local bytes into PDF.js in the background (0ms network delay!)
       file.arrayBuffer().then(async (buf) => {
@@ -540,22 +626,26 @@ export function App() {
     setEditCount(0);
     setRedoCount(0);
     setPdfRefreshKey(0);
+    setLastModifiedPage(null);
     setActiveMatchKey(null);
     setAllSearchMatchIds([]);
     setSearchQuery('');
     setIsFindReplaceOpen(false);
   };
 
-  const handleMatchChange = useCallback((activeKey: string | null, allIds: string[], query: string = '') => {
+  const handleMatchChange = useCallback((activeKey: string | null, allIds: string[], query: string = '', targetPage?: number) => {
     setActiveMatchKey((prev) => (prev === activeKey ? prev : activeKey));
     setSearchQuery((prev) => (prev === query ? prev : query));
+    if (targetPage && targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+    }
     setAllSearchMatchIds((prev) => {
       if (prev.length === allIds.length && prev.every((id, idx) => id === allIds[idx])) {
         return prev;
       }
       return allIds;
     });
-  }, []);
+  }, [currentPage]);
 
   // Seamless Background PDF Refresh: loads the updated PDF document in the background
   // and swaps sharedPdfDoc directly without clearing it to null.
@@ -584,10 +674,14 @@ export function App() {
     targetTextId?: string,
     boundingBox?: any,
     origin?: [number, number],
-    pageNumber?: number
+    pageNumber?: number,
+    underlined?: boolean,
+    fontSize?: number,
+    fontFamily?: string
   ) => {
     if (!session) return;
     const targetPage = pageNumber ?? currentPage;
+    setLastModifiedPage(targetPage);
     if (pageNumber && pageNumber !== currentPage) {
       setCurrentPage(pageNumber);
     }
@@ -605,6 +699,12 @@ export function App() {
               const b = parseInt(c.slice(4, 6), 16) / 255;
               updatedFont.color = [r, g, b];
             }
+          }
+          if (fontSize !== undefined) {
+            updatedFont.size = fontSize;
+          }
+          if (fontFamily !== undefined) {
+            updatedFont.family = fontFamily;
           }
           return {
             ...obj,
@@ -626,17 +726,28 @@ export function App() {
         color,
         targetTextId,
         boundingBox,
-        origin
+        origin,
+        underlined,
+        fontSize,
+        fontFamily
       );
 
       if (res.textObjects && res.textObjects.length > 0) {
-        setEditableObjects(res.textObjects);
-        pageAnalysisCache.current.set(targetPage, { textObjects: res.textObjects, imageObjects: res.imageObjects || [] });
+        const newTexts = res.textObjects;
+        setEditableObjects((prev) => {
+          const others = prev.filter((o) => (o.pageNumber || 1) !== targetPage);
+          return [...others, ...newTexts];
+        });
+        pageAnalysisCache.current.set(targetPage, { textObjects: newTexts, imageObjects: res.imageObjects || [] });
       } else {
         pageAnalysisCache.current.delete(targetPage);
       }
       if (res.imageObjects) {
-        setImageObjects(res.imageObjects);
+        const newImages = res.imageObjects;
+        setImageObjects((prev) => {
+          const others = prev.filter((img: any) => (img.pageNumber || 1) !== targetPage);
+          return [...others, ...newImages];
+        });
       }
 
       setEditCount((prev) => prev + 1);
@@ -666,6 +777,7 @@ export function App() {
       } else {
         refreshPdfDoc(session.sessionId);
       }
+      showToast('Text updated', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to edit text', 'error');
       pageAnalysisCache.current.delete(targetPage);
@@ -684,6 +796,7 @@ export function App() {
   const handleDeleteImage = async (boundingBox: any, pageNumber?: number) => {
     if (!session) return;
     const targetPage = pageNumber ?? currentPage;
+    setLastModifiedPage(targetPage);
     try {
       setIsProcessing(true);
       const res = await deletePdfImage(session.sessionId, targetPage, boundingBox);
@@ -710,6 +823,7 @@ export function App() {
   ) => {
     if (!session) return;
     const targetPage = pageNumber ?? currentPage;
+    setLastModifiedPage(targetPage);
     try {
       setIsProcessing(true);
       const res = await adjustPdfImage(
@@ -726,7 +840,7 @@ export function App() {
       setEditCount((prev) => prev + 1);
       setRedoCount(0);
       await refreshPdfDoc(session.sessionId);
-      showToast('Logo updated successfully!', 'success');
+      showToast('Image updated', 'success');
     } catch (err: any) {
       const msg = (typeof err?.message === 'string' ? err.message : null) || 'Failed to adjust logo';
       showToast(msg, 'error');
@@ -736,10 +850,281 @@ export function App() {
     }
   };
 
+  // Handle rotating a page by 90 degrees with instant optimistic update
+  const handleRotatePage = async (pageNumber: number) => {
+    if (!session) return;
+    setLastModifiedPage(pageNumber);
+
+    // 1. INSTANT OPTIMISTIC IN-MEMORY ROTATION (0ms)
+    // Synchronously update session.pages so both the sidebar thumbnail and main page
+    // render rotated on the very next frame using the in-memory PDF document!
+    setSession((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pages: prev.pages.map((p) => {
+          if (p.page !== pageNumber) return p;
+          const nextRotation = ((p.rotation || 0) + 90) % 360;
+          return {
+            ...p,
+            width: p.height,
+            height: p.width,
+            rotation: nextRotation,
+          };
+        }),
+      };
+    });
+
+    // 2. Persist to backend asynchronously in the background
+    try {
+      const res = await rotatePdfPage(session.sessionId, pageNumber, 90);
+      pageAnalysisCache.current.delete(pageNumber);
+      if (res.session) {
+        setSession(res.session);
+      }
+      if (res.textObjects) {
+        setEditableObjects((prev) => {
+          const others = prev.filter((o) => (o.pageNumber || 1) !== pageNumber);
+          return [...others, ...(res.textObjects || [])];
+        });
+      }
+      if (res.imageObjects) {
+        setImageObjects((prev) => {
+          const others = prev.filter((img: any) => (img.pageNumber || 1) !== pageNumber);
+          return [...others, ...(res.imageObjects || [])];
+        });
+      }
+      setEditCount((prev) => prev + 1);
+      setRedoCount(0);
+      // Background reload so subsequent download matches exact PyMuPDF bytes
+      refreshPdfDoc(session.sessionId);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to rotate page', 'error');
+    }
+  };
+
+  // Handle deleting a page
+  const handleDeletePage = async (pageNumber: number) => {
+    if (!session) return;
+    setLastModifiedPage(null);
+    if (session.pageCount <= 1) {
+      showToast('Cannot delete the only page', 'error');
+      return;
+    }
+    try {
+      setIsProcessing(true);
+      const res = await deletePdfPage(session.sessionId, pageNumber);
+      if (res.session) {
+        setSession(res.session);
+      }
+      pageAnalysisCache.current.clear();
+      const newPage = res.newPage || Math.min(currentPage, res.session?.pageCount || 1);
+      setCurrentPage(newPage);
+      if (res.textObjects) {
+        setEditableObjects(res.textObjects);
+      }
+      if (res.imageObjects) {
+        setImageObjects(res.imageObjects);
+      }
+      setEditCount((prev) => prev + 1);
+      setRedoCount(0);
+      await refreshPdfDoc(session.sessionId);
+      showToast(`Page ${pageNumber} deleted`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete page', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle permanent stream redaction
+  const handleRedactText = async (boundingBox: any, pageNumber?: number) => {
+    if (!session) return;
+    const targetPage = pageNumber ?? currentPage;
+    setLastModifiedPage(targetPage);
+    try {
+      setIsProcessing(true);
+      const res = await redactPdfArea(session.sessionId, targetPage, boundingBox, '#000000');
+      pageAnalysisCache.current.delete(targetPage);
+      if (res.textObjects) {
+        setEditableObjects((prev) => {
+          const others = prev.filter((o) => (o.pageNumber || 1) !== targetPage);
+          return sortEditableTexts([...others, ...(res.textObjects || [])]);
+        });
+      }
+      if (res.imageObjects) {
+        setImageObjects((prev) => {
+          const others = prev.filter((img: any) => (img.pageNumber || 1) !== targetPage);
+          return [...others, ...(res.imageObjects || [])];
+        });
+      }
+      setEditCount((prev) => prev + 1);
+      setRedoCount(0);
+      await refreshPdfDoc(session.sessionId);
+      showToast('Text redacted', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to redact content', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle inserting new text at (x, y) with full typography support
+  const handleInsertText = async (
+    text: string,
+    x: number,
+    y: number,
+    pageNumber?: number,
+    fontSize: number = 14,
+    fontWeight: string = 'normal',
+    fontFamily: string = 'Helvetica',
+    color?: string,
+    underlined?: boolean
+  ) => {
+    if (!session || !text.trim()) return;
+    const targetPage = pageNumber ?? currentPage;
+    setLastModifiedPage(targetPage);
+    try {
+      setIsProcessing(true);
+      const res = await insertPdfText(
+        session.sessionId,
+        targetPage,
+        text.trim(),
+        x,
+        y,
+        fontSize,
+        fontWeight,
+        fontFamily,
+        color,
+        underlined
+      );
+      pageAnalysisCache.current.delete(targetPage);
+      if (res.textObjects) {
+        setEditableObjects((prev) => {
+          const others = prev.filter((o) => (o.pageNumber || 1) !== targetPage);
+          return sortEditableTexts([...others, ...(res.textObjects || [])]);
+        });
+      }
+      if (res.imageObjects) {
+        setImageObjects((prev) => {
+          const others = prev.filter((img: any) => (img.pageNumber || 1) !== targetPage);
+          return [...others, ...(res.imageObjects || [])];
+        });
+      }
+      setEditCount((prev) => prev + 1);
+      setRedoCount(0);
+      await refreshPdfDoc(session.sessionId);
+      showToast('Text added', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add text', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Helper to re-analyze all pages and update editableObjects in stable order
+  const refreshAllPagesAnalysis = async (sessionId: string, activePage: number, pagesList?: { page: number }[]) => {
+    pageAnalysisCache.current.clear();
+    try {
+      const activeRes = await analyzePage(sessionId, activePage);
+      const activeTexts = activeRes.textObjects || [];
+      const activeImages = activeRes.imageObjects || [];
+      pageAnalysisCache.current.set(activePage, { textObjects: activeTexts, imageObjects: activeImages });
+
+      let allTexts: EditableText[] = [...activeTexts];
+      let allImages: ImageObject[] = [...activeImages];
+
+      setEditableObjects(sortEditableTexts(allTexts));
+      setImageObjects(allImages);
+
+      // Re-fetch all other document pages so continuous scroll and Find & Replace have full document data
+      if (pagesList && pagesList.length > 1) {
+        const otherPages = pagesList.filter((p) => p.page !== activePage);
+        const results = await Promise.allSettled(
+          otherPages.map((p) => analyzePage(sessionId, p.page).then((r) => ({ page: p.page, res: r })))
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value.res) {
+            const pNum = r.value.page;
+            const pTexts = r.value.res.textObjects || [];
+            const pImages = r.value.res.imageObjects || [];
+            pageAnalysisCache.current.set(pNum, { textObjects: pTexts, imageObjects: pImages });
+            allTexts = allTexts.filter((o) => (o.pageNumber || 1) !== pNum).concat(pTexts);
+            allImages = allImages.filter((img: any) => (img.pageNumber || 1) !== pNum).concat(pImages);
+          }
+        }
+        setEditableObjects(sortEditableTexts(allTexts));
+        setImageObjects(allImages);
+      }
+    } catch (err) {
+      console.warn('Failed to refresh page analysis:', err);
+    }
+  };
+
+  // Handle batch replace all across document with single document refresh
+  const handleReplaceAllInDocument = async (matchesToReplace: any[], replacement: string) => {
+    if (!session || matchesToReplace.length === 0) return;
+    setIsProcessing(true);
+
+    try {
+      // 1. Group matches by target object ID
+      const objectUpdates = new Map<string, { obj: EditableText; page: number; newText: string }>();
+
+      for (const m of matchesToReplace) {
+        const objId = m.obj.id;
+        const pageNum = m.obj.pageNumber || currentPage;
+        if (!objectUpdates.has(objId)) {
+          objectUpdates.set(objId, { obj: m.obj, page: pageNum, newText: m.obj.text });
+        }
+      }
+
+      // For each object, replace occurrences from right to left (descending startIndex) to avoid drift
+      for (const [objId, item] of objectUpdates.entries()) {
+        const objMatches = matchesToReplace.filter((m) => m.obj.id === objId);
+        const sortedDesc = [...objMatches].sort((a, b) => b.startIndex - a.startIndex);
+        let updatedText = item.obj.text;
+        for (const m of sortedDesc) {
+          const before = updatedText.substring(0, m.startIndex);
+          const after = updatedText.substring(m.startIndex + m.length);
+          updatedText = before + replacement + after;
+        }
+        item.newText = updatedText;
+      }
+
+      // 2. Perform backend edits sequentially without jumping pages
+      let totalModified = 0;
+      for (const item of objectUpdates.values()) {
+        await editPdfText(
+          session.sessionId,
+          item.page,
+          item.obj.text,
+          item.newText,
+          undefined,
+          item.obj.id,
+          item.obj.boundingBox,
+          item.obj.origin
+        );
+        totalModified++;
+      }
+
+      setEditCount((prev) => prev + totalModified);
+      setRedoCount(0);
+
+      // 3. Refresh analysis across all pages and reload PDF doc once
+      await refreshAllPagesAnalysis(session.sessionId, currentPage, session.pages);
+      await refreshPdfDoc(session.sessionId);
+      showToast(`Replaced ${matchesToReplace.length} occurrence${matchesToReplace.length === 1 ? '' : 's'}`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to replace all occurrences', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Handle undo edit
   const handleUndo = async () => {
     if (!session || editCount <= 0) return;
+    setLastModifiedPage(null);
     try {
       setIsProcessing(true);
       const res = await undoPdfEdit(session.sessionId);
@@ -747,13 +1132,9 @@ export function App() {
         setEditCount((prev) => Math.max(0, prev - 1));
         setRedoCount((prev) => prev + 1);
         await refreshPdfDoc(session.sessionId);
-        // Re-fetch page analysis so editableObjects reflects the reverted state
-        // This also keeps Find & Replace search index in sync after undo
-        try {
-          const pageRes = await analyzePage(session.sessionId, currentPage);
-          setEditableObjects(pageRes.textObjects || []);
-          setImageObjects(pageRes.imageObjects || []);
-        } catch (e) {}
+        // Clear stale cache and reload analysis for ALL pages so reverted words are immediately searchable!
+        await refreshAllPagesAnalysis(session.sessionId, currentPage, session.pages);
+        showToast('Undo successful', 'success');
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to undo edit', 'error');
@@ -765,6 +1146,7 @@ export function App() {
   // Handle redo edit
   const handleRedo = async () => {
     if (!session || redoCount <= 0) return;
+    setLastModifiedPage(null);
     try {
       setIsProcessing(true);
       const res = await redoPdfEdit(session.sessionId);
@@ -772,12 +1154,8 @@ export function App() {
         setEditCount((prev) => prev + 1);
         setRedoCount((prev) => Math.max(0, prev - 1));
         await refreshPdfDoc(session.sessionId);
-        // Re-fetch page analysis so editableObjects reflects the re-applied state
-        try {
-          const pageRes = await analyzePage(session.sessionId, currentPage);
-          setEditableObjects(pageRes.textObjects || []);
-          setImageObjects(pageRes.imageObjects || []);
-        } catch (e) {}
+        await refreshAllPagesAnalysis(session.sessionId, currentPage, session.pages);
+        showToast('Redo successful', 'success');
       }
     } catch (err: any) {
       showToast(err.message || 'Failed to redo edit', 'error');
@@ -816,7 +1194,7 @@ export function App() {
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      showToast('PDF downloaded successfully', 'success');
+      showToast('Document downloaded', 'success');
     } catch (err: any) {
       console.error('Download error:', err);
       showToast(err.message || 'Error downloading PDF', 'error');
@@ -888,11 +1266,14 @@ export function App() {
               currentPage={currentPage}
               pdfUrl={pdfUrl}
               pdfDoc={sharedPdfDoc}
+              modifiedPage={lastModifiedPage}
               onPageSelect={(p) => {
                 setCurrentPage(p);
                 const el = document.getElementById(`pdf-page-${p}`);
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
               }}
+              onRotatePage={handleRotatePage}
+              onDeletePage={handleDeletePage}
             />
 
             <PdfViewer
@@ -904,6 +1285,7 @@ export function App() {
               totalPages={session.pageCount}
               pages={session.pages}
               scale={scale}
+              modifiedPage={lastModifiedPage}
               editableObjects={editableObjects}
               imageObjects={imageObjects}
               isProcessing={isProcessing}
@@ -922,7 +1304,12 @@ export function App() {
               onDeleteImage={handleDeleteImage}
               onReplaceImage={(bbox, file) => handleAdjustImage(bbox, bbox, file)}
               onAdjustImage={handleAdjustImage}
+              onRedactArea={handleRedactText}
               onActiveEditChange={setIsEditingActive}
+              isAddTextMode={isAddTextMode}
+              onToggleAddText={() => setIsAddTextMode((v) => !v)}
+              onInsertText={handleInsertText}
+              onExitAddTextMode={() => setIsAddTextMode(false)}
             />
 
             <Toolbar
@@ -959,10 +1346,12 @@ export function App() {
                 }}
                 editableObjects={editableObjects}
                 currentPage={currentPage}
+                totalPages={session.pageCount}
                 onMatchChange={handleMatchChange}
                 onReplaceOne={async (obj, newText) => {
                   await handleCommitEdit(obj.text, newText, undefined, obj.id, obj.boundingBox, obj.origin, obj.pageNumber || currentPage);
                 }}
+                onReplaceAll={handleReplaceAllInDocument}
               />
             )}
           </>

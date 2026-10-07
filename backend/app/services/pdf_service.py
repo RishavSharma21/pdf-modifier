@@ -95,6 +95,69 @@ class PDFService:
             "pages": pages_meta,
         }
 
+    def _refresh_session_meta(self, session_id: str) -> Dict[str, Any]:
+        """Re-scan current.pdf and update meta.json with latest pages and rotation."""
+        path = self.get_session_file_path(session_id)
+        session_folder = os.path.dirname(path)
+        meta_path = os.path.join(session_folder, "meta.json")
+        orig_filename = "document.pdf"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    orig_filename = data.get("filename", orig_filename)
+            except Exception:
+                pass
+
+        doc = fitz.open(path)
+        page_count = len(doc)
+        pages_meta = []
+        for i in range(page_count):
+            p = doc[i]
+            pages_meta.append({
+                "page": i + 1,
+                "width": round(p.rect.width, 2),
+                "height": round(p.rect.height, 2),
+                "rotation": p.rotation,
+            })
+        doc.close()
+
+        updated_info = {
+            "sessionId": session_id,
+            "filename": orig_filename,
+            "pageCount": page_count,
+            "pages": pages_meta,
+        }
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(updated_info, f)
+        except Exception:
+            pass
+        return updated_info
+
+    def _push_undo(self, session_id: str, current_path: str, temp_output_path: str) -> None:
+        """Push current state to undo stack, clear redo stack, and commit temp file."""
+        if not hasattr(self, "undo_stacks"):
+            self.undo_stacks = {}
+        if not hasattr(self, "redo_stacks"):
+            self.redo_stacks = {}
+        self.undo_stacks.setdefault(session_id, [])
+        if session_id in self.redo_stacks:
+            for f in self.redo_stacks[session_id]:
+                try:
+                    if os.path.exists(f):
+                        os.remove(f)
+                except OSError:
+                    pass
+            self.redo_stacks[session_id].clear()
+
+        session_folder = os.path.dirname(current_path)
+        backup_name = f"backup_undo_{len(self.undo_stacks[session_id])}.pdf"
+        backup_path = os.path.join(session_folder, backup_name)
+        shutil.copy2(current_path, backup_path)
+        self.undo_stacks[session_id].append(backup_path)
+        shutil.move(temp_output_path, current_path)
+
     def get_session_file_path(self, session_id: str) -> str:
         """Get the current working PDF path for a session."""
         path = os.path.join(self.storage_dir, session_id, "current.pdf")
@@ -130,6 +193,9 @@ class PDFService:
         target_text_id: Optional[str] = None,
         bounding_box: Optional[Dict[str, float]] = None,
         origin: Optional[List[float]] = None,
+        underlined: Optional[bool] = None,
+        font_size: Optional[float] = None,
+        font_family: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Apply surgical text replacement to the session's PDF."""
         current_path = self.get_session_file_path(session_id)
@@ -173,6 +239,9 @@ class PDFService:
             target_text_id=target_text_id,
             bounding_box=bbox_obj,
             origin=orig_tuple,
+            underlined=underlined,
+            font_size=font_size,
+            font_family=font_family,
         )
 
         if result.success:
@@ -254,6 +323,7 @@ class PDFService:
                 os.remove(last_undo)
             except OSError:
                 pass
+            self._refresh_session_meta(session_id)
             return True
         return False
 
@@ -286,8 +356,121 @@ class PDFService:
                 os.remove(last_redo)
             except OSError:
                 pass
+            self._refresh_session_meta(session_id)
             return True
         return False
+
+    def rotate_page(self, session_id: str, page_number: int, angle: int = 90) -> Dict[str, Any]:
+        """Rotate a page clockwise by angle (typically 90, 180, 270)."""
+        current_path = self.get_session_file_path(session_id)
+        session_folder = os.path.dirname(current_path)
+        temp_output_path = os.path.join(session_folder, "next.pdf")
+
+        doc = fitz.open(current_path)
+        page_idx = page_number - 1
+        if 0 <= page_idx < len(doc):
+            page = doc[page_idx]
+            page.set_rotation((page.rotation + angle) % 360)
+            doc.save(temp_output_path)
+            doc.close()
+
+            self._push_undo(session_id, current_path, temp_output_path)
+            meta = self._refresh_session_meta(session_id)
+            analysis = self.analyze_session_page(session_id, page_number)
+            return {
+                "success": True,
+                "session": meta,
+                "textObjects": analysis.get("textObjects", []),
+                "imageObjects": analysis.get("imageObjects", [])
+            }
+        else:
+            doc.close()
+            return {"success": False, "error": f"Invalid page number: {page_number}"}
+
+    def delete_page(self, session_id: str, page_number: int) -> Dict[str, Any]:
+        """Delete a page from the document (prevents deleting the only page)."""
+        current_path = self.get_session_file_path(session_id)
+        session_folder = os.path.dirname(current_path)
+        temp_output_path = os.path.join(session_folder, "next.pdf")
+
+        doc = fitz.open(current_path)
+        if len(doc) <= 1:
+            doc.close()
+            return {"success": False, "error": "Cannot delete the only page in the document."}
+
+        page_idx = page_number - 1
+        if 0 <= page_idx < len(doc):
+            doc.delete_page(page_idx)
+            doc.save(temp_output_path)
+            doc.close()
+
+            self._push_undo(session_id, current_path, temp_output_path)
+            meta = self._refresh_session_meta(session_id)
+            new_page = min(page_number, meta["pageCount"])
+            analysis = self.analyze_session_page(session_id, new_page)
+            return {
+                "success": True,
+                "session": meta,
+                "newPage": new_page,
+                "textObjects": analysis.get("textObjects", []),
+                "imageObjects": analysis.get("imageObjects", [])
+            }
+        else:
+            doc.close()
+            return {"success": False, "error": f"Invalid page number: {page_number}"}
+
+    def redact_area(
+        self,
+        session_id: str,
+        page_number: int,
+        bounding_box: Dict[str, Any],
+        fill_color: Optional[str] = "#000000"
+    ) -> Dict[str, Any]:
+        """True stream redaction: removes underlying vector text and covers with fill_color."""
+        current_path = self.get_session_file_path(session_id)
+        session_folder = os.path.dirname(current_path)
+        temp_output_path = os.path.join(session_folder, "next.pdf")
+
+        rgb = (0.0, 0.0, 0.0)
+        if fill_color:
+            c = fill_color.lstrip("#")
+            if len(c) == 6:
+                try:
+                    rgb = (
+                        int(c[0:2], 16) / 255.0,
+                        int(c[2:4], 16) / 255.0,
+                        int(c[4:6], 16) / 255.0
+                    )
+                except ValueError:
+                    pass
+
+        doc = fitz.open(current_path)
+        page_idx = page_number - 1
+        if 0 <= page_idx < len(doc):
+            page = doc[page_idx]
+            x = float(bounding_box.get("x", 0.0))
+            y = float(bounding_box.get("y", 0.0))
+            w = float(bounding_box.get("width", 0.0))
+            h = float(bounding_box.get("height", 0.0))
+            rect = fitz.Rect(x, y, x + w, y + h)
+
+            # PyMuPDF permanent stream scrubbing
+            page.add_redact_annot(rect, fill=rgb)
+            page.apply_redactions()
+
+            doc.save(temp_output_path)
+            doc.close()
+
+            self._push_undo(session_id, current_path, temp_output_path)
+            analysis = self.analyze_session_page(session_id, page_number)
+            return {
+                "success": True,
+                "textObjects": analysis.get("textObjects", []),
+                "imageObjects": analysis.get("imageObjects", [])
+            }
+        else:
+            doc.close()
+            return {"success": False, "error": f"Invalid page number: {page_number}"}
 
     def insert_text(
         self,
@@ -299,7 +482,8 @@ class PDFService:
         font_size: float = 14.0,
         font_weight: str = "normal",
         font_family: str = "Helvetica",
-        color: Optional[str] = None
+        color: Optional[str] = None,
+        underlined: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Insert brand-new text directly into the page at (x, y)."""
         current_path = self.get_session_file_path(session_id)
@@ -380,6 +564,20 @@ class PDFService:
                 fontname=fname,
                 color=rgb
             )
+
+            # Draw underline if requested
+            if underlined:
+                try:
+                    text_w = fitz.get_text_length(text, fontname=fname, fontsize=font_size)
+                except Exception:
+                    text_w = font_size * len(text) * 0.55
+                page.draw_line(
+                    fitz.Point(x, baseline_y + 1.2),
+                    fitz.Point(x + text_w, baseline_y + 1.2),
+                    color=rgb,
+                    width=0.75
+                )
+
             doc.save(temp_output_path)
             doc.close()
 

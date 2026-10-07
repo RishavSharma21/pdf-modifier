@@ -5,8 +5,6 @@ import {
   Crop as CropIcon,
   RotateCcw,
   Trash2,
-  Check,
-  X,
   Loader2,
 } from 'lucide-react';
 import type { ImageObject } from '../types/pdf';
@@ -49,7 +47,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
     >
       {/* Left: Badge & Live Position / Dimensions */}
       <div className="editor-subbar-left">
-        <div className="subbar-icon-badge" title="Logo / Image Adjustment">
+        <div className="subbar-icon-badge">
           <ImageIcon size={15} />
         </div>
         <div className="image-subbar-meta">
@@ -65,7 +63,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
         <button
           className="btn btn-sm btn-subbar-action"
           onClick={onReplaceClick}
-          title="Upload and replace with your own image or logo"
+          aria-label="Replace Logo"
         >
           <Upload size={13} />
           <span>Replace Logo</span>
@@ -74,7 +72,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
         <button
           className="btn btn-sm btn-subbar-action"
           onClick={onOpenCrop}
-          title="Crop or adjust logo borders"
+          aria-label="Crop Logo"
         >
           <CropIcon size={13} />
           <span>Crop</span>
@@ -84,7 +82,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
           <button
             className="btn btn-sm btn-subbar-action"
             onClick={onReset}
-            title="Reset position, size, and crop to original"
+            aria-label="Reset Logo"
           >
             <RotateCcw size={13} />
             <span>Reset</span>
@@ -94,7 +92,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
         <button
           className="btn btn-sm btn-subbar-action btn-danger"
           onClick={onDelete}
-          title="Delete logo from the document"
+          aria-label="Delete Logo"
         >
           <Trash2 size={13} />
           <span>Delete</span>
@@ -107,17 +105,14 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
           className="btn btn-sm btn-ghost"
           onClick={onCancel}
           disabled={isSubmitting}
-          title="Cancel editing"
         >
-          <X size={14} />
-          <span>Cancel</span>
+          Cancel
         </button>
 
         <button
           className="btn btn-sm btn-success-save"
           onClick={onSave}
           disabled={isSubmitting}
-          title="Save logo modifications to PDF"
         >
           {isSubmitting ? (
             <>
@@ -125,10 +120,7 @@ export const ImageEditorSubbar: React.FC<ImageEditorSubbarProps> = ({
               <span>Saving...</span>
             </>
           ) : (
-            <>
-              <Check size={14} />
-              <span>Save Changes</span>
-            </>
+            <span>Save</span>
           )}
         </button>
       </div>

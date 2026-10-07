@@ -352,7 +352,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         pass
 
                     # Determine baseline Y and left X upfront to accurately compute vertical boundaries
-                    def_font_size = target_font.size if target_font else 11.0
+                    def_font_size = operation.font_size or (target_font.size if target_font else 11.0)
                     if operation.origin:
                         baseline_y = operation.origin[1]
                         insertion_x = operation.origin[0]
@@ -494,19 +494,26 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         page_fitz.draw_rect(ul_paint, color=None, fill=bg_color, width=0)
 
                     PAGE_RIGHT_MARGIN = max(page_fitz.rect.width - 18.0, 100.0)
-                    # Hard cap: replacement text must NEVER exceed the original line's right edge.
-                    # Using min() ensures we don't give more room than the original bbox.
-                    avail_width = min(
-                        max(target_rect.width, 20.0),          # at least 20pt
-                        PAGE_RIGHT_MARGIN - insertion_x         # never past page margin
-                    )
+                    
+                    # Detect sibling text on the same line to avoid overlapping adjacent columns/tables
+                    sibling_right_x0 = None
+                    for l_bbox, l_origin_y, _ in all_page_lines:
+                        if abs(l_origin_y - baseline_y) <= 3.0:
+                            if l_bbox.x0 > target_rect.x1 - 2.0:
+                                if sibling_right_x0 is None or l_bbox.x0 < sibling_right_x0:
+                                    sibling_right_x0 = l_bbox.x0
+
+                    if sibling_right_x0 is not None:
+                        avail_width = max(sibling_right_x0 - insertion_x - 4.0, 20.0)
+                    else:
+                        avail_width = max(PAGE_RIGHT_MARGIN - insertion_x, 20.0)
                     font_color = target_font.color if target_font else (0, 0, 0)
 
                     # Cache for dynamically loaded system and Base-14 fonts
                     loaded_fonts: Dict[str, Tuple[str, Optional[fitz.Font], float]] = {}
 
                     def get_font_render_details(fi: Optional[FontInfo], text_sample: str = "") -> Tuple[str, Optional[fitz.Font], float]:
-                        f_size = fi.size if (fi and hasattr(fi, "size")) else def_font_size
+                        f_size = operation.font_size or (fi.size if (fi and hasattr(fi, "size")) else def_font_size)
                         f_bold = (getattr(fi, "weight", "normal") == "bold")
                         f_italic = (getattr(fi, "style", "normal") == "italic")
                         f_raw = (getattr(fi, "family", None) or "").lower()
@@ -745,16 +752,63 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 pass
                         return fitz.get_text_length(t, fontname=fn, fontsize=sz)
 
+                    # Detect fill-in lines (containing underscores, e.g. "Signature: _______________________", or form labels)
+                    has_underscores = ('__' in orig_text) or ('__' in sub_new) or ('__' in operation.original_text) or ('__' in operation.new_text)
+                    is_known_form_prefix = bool(re.match(r'^(signature|name|date|title|by):\s*', orig_text, re.IGNORECASE))
+                    has_form_line = False
+                    form_line_x1 = target_rect.x1
+                    for d in all_drawings:
+                        dr = fitz.Rect(d.get("rect"))
+                        if dr and dr.height <= 3.5:
+                            if abs(dr.y0 - baseline_y) <= 4.0 or abs(dr.y1 - baseline_y) <= 4.0:
+                                if dr.x0 < target_rect.x1 + 10.0 and dr.x1 > target_rect.x0:
+                                    has_form_line = True
+                                    if dr.x1 > form_line_x1:
+                                        form_line_x1 = dr.x1
+
+                    is_fill_line = has_underscores or (is_known_form_prefix and has_form_line) or (getattr(operation, 'underlined', False) and is_known_form_prefix)
+                    
+                    fill_line_start_x = insertion_x
+                    fill_line_end_x = max(target_rect.x1, form_line_x1)
+                    clean_render_text = sub_new
+
+                    if is_fill_line:
+                        m_us = re.search(r'_+', orig_text)
+                        if m_us:
+                            prefix_str = orig_text[:m_us.start()]
+                        elif is_known_form_prefix:
+                            m_pfx = re.match(r'^(signature|name|date|title|by):\s*', orig_text, re.IGNORECASE)
+                            prefix_str = m_pfx.group(0) if m_pfx else ""
+                        else:
+                            prefix_str = ""
+
+                        if prefix_str:
+                            p_fn, p_fo, p_sz = get_font_render_details(target_font, prefix_str)
+                            prefix_w = measure_piece_w(prefix_str, p_fn, p_fo, p_sz)
+                            fill_line_start_x = insertion_x + prefix_w
+                        
+                        # Strip ALL underscore artifacts from the text to be rendered.
+                        # The underscores were only placeholders for the line; the line is rendered
+                        # as a clean, continuous vector line from fill_line_start_x to fill_line_end_x.
+                        clean_render_text = re.sub(r'_+', '', sub_new)
+                        clean_render_text = re.sub(r'[ \t]+', ' ', clean_render_text).strip()
+                        
+                        # If the user only typed the fill value without the prefix (e.g. "Hello"),
+                        # preserve the label prefix (e.g. "Signature: Hello").
+                        if prefix_str and not clean_render_text.startswith(prefix_str.strip()):
+                            clean_render_text = f"{prefix_str}{clean_render_text}"
+                        elif not clean_render_text and prefix_str:
+                            clean_render_text = prefix_str.rstrip()
+
                     # 1. Segment modified text preserving original multi-span formatting (bold, italic, colors)
                     styled_segments = segment_text_by_runs(
                         orig_text=orig_text,
-                        new_text=sub_new,
+                        new_text=clean_render_text,
                         runs=operation.original_runs,
                         default_font=target_font or FontInfo(family="Helvetica", size=def_font_size)
                     )
 
                     # 2. Further segment text if any piece contains URLs / links
-                    import re
                     URL_REGEX = re.compile(
                         r'(https?://[^\s<>"]+|www\.[^\s<>"]+|[a-zA-Z0-9.\-_]+@[a-zA-Z0-9.\-_]+\.[a-zA-Z]{2,})'
                     )
@@ -805,7 +859,7 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             # a multi-word run into a justified line:
                             # render word-by-word with exact horizontal offsets. This avoids PyMuPDF
                             # emitting \x00 characters for spaces and prevents width inflation.
-                            if ' ' in p["text"] and (not f_has_space or (avail_width > 50 and len(piece_render_info) == 1)):
+                            if ' ' in p["text"] and not f_has_space:
                                 words = p["text"].split(' ')
                                 num_gaps = max(len(words) - 1, 0)
                                 sum_words_w = sum(measure_piece_w(w, p["fname"], p["fobj"], actual_size) for w in words if w)
@@ -876,19 +930,46 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 pass
                             curr_x += actual_w
 
-                    # 5. Redraw text underline for normal text if original text was underlined
-                    if had_text_underline and text_underline_info and not any(p.get("is_link") for p in piece_render_info):
-                        uy = text_underline_info["y"]
-                        page_fitz.draw_line(
-                            fitz.Point(insertion_x, uy),
-                            fitz.Point(curr_x, uy),
-                            color=text_underline_info["color"],
-                            width=text_underline_info["width"],
-                            dashes=text_underline_info.get("dashes")
-                        )
+                    # 5. Redraw text underline for normal text or fill-in line
+                    if (had_text_underline or is_fill_line or getattr(operation, 'underlined', False)) and not any(p.get("is_link") for p in piece_render_info):
+                        if text_underline_info:
+                            uy = text_underline_info["y"]
+                            u_color = text_underline_info["color"]
+                            u_width = text_underline_info["width"]
+                            u_dashes = text_underline_info.get("dashes")
+                        else:
+                            uy = baseline_y + 1.2
+                            u_color = font_color
+                            u_width = 0.75
+                            u_dashes = None
+                        
+                        if is_fill_line:
+                            # Draw strictly from fill_line_start_x to fill_line_end_x (target_rect.x1)
+                            # The line stays 100% stable and NEVER expands to the right!
+                            page_fitz.draw_line(
+                                fitz.Point(fill_line_start_x, uy),
+                                fitz.Point(fill_line_end_x, uy),
+                                color=u_color,
+                                width=u_width,
+                                dashes=u_dashes
+                            )
+                        else:
+                            # Normal text underline (e.g. user toggled Underline on a heading)
+                            page_fitz.draw_line(
+                                fitz.Point(insertion_x, uy),
+                                fitz.Point(curr_x, uy),
+                                color=u_color,
+                                width=u_width,
+                                dashes=u_dashes
+                            )
 
                     # 6. Restore any table grid borders or form write-on lines that were near/touched
                     for d in lines_to_restore:
+                        dr = fitz.Rect(d.get("rect"))
+                        # Skip restoring horizontal line under this exact fill line since we freshly redraw it unbroken
+                        if is_fill_line and dr and dr.height <= 3.5 and abs((dr.y0 + dr.y1)/2.0 - baseline_y) <= 4.0:
+                            if dr.x0 < fill_line_end_x + 5.0 and dr.x1 > fill_line_start_x - 5.0:
+                                continue
                         c = d.get("color") or (0, 0, 0)
                         w = d.get("width") or 1.0
                         dsh = d.get("dashes")

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { Check, AlertCircle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -32,11 +32,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev.slice(-3), { id, message, type }]); // Keep at most 4 toasts
+    setToasts((prev) => [...prev.slice(-2), { id, message, type }]); // Keep at most 3 toasts
 
     setTimeout(() => {
       removeToast(id);
-    }, 3200);
+    }, 2800);
   }, [removeToast]);
 
   return (
@@ -44,11 +44,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {children}
       <div className="toast-dock" role="region" aria-label="Notifications">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast-capsule toast-${t.type}`}>
-            <div className="toast-icon">
-              {t.type === 'success' && <CheckCircle2 size={14} className="toast-icon-svg" />}
-              {t.type === 'error' && <AlertCircle size={14} className="toast-icon-svg" />}
-              {t.type === 'info' && <Info size={14} className="toast-icon-svg" />}
+          <div key={t.id} className={`toast-card toast-${t.type}`}>
+            <div className="toast-icon-badge">
+              {t.type === 'success' && <Check size={12} strokeWidth={2.6} />}
+              {t.type === 'error' && <AlertCircle size={12} strokeWidth={2.4} />}
+              {t.type === 'info' && <Info size={12} strokeWidth={2.4} />}
             </div>
             <span className="toast-message">{t.message}</span>
             <button
@@ -56,7 +56,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               onClick={() => removeToast(t.id)}
               aria-label="Dismiss notification"
             >
-              <X size={12} />
+              <X size={12} strokeWidth={2.2} />
             </button>
           </div>
         ))}

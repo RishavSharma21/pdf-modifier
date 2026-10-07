@@ -26,6 +26,9 @@ class PDFModificationEngine:
         target_text_id: Optional[str] = None,
         bounding_box: Optional[BoundingBox] = None,
         origin: Optional[Tuple[float, float]] = None,
+        underlined: Optional[bool] = None,
+        font_size: Optional[float] = None,
+        font_family: Optional[str] = None,
     ) -> ModificationResult:
         """Find a target text run on the specified page and replace it in the content stream."""
         if not os.path.exists(input_pdf_path):
@@ -98,6 +101,12 @@ class PDFModificationEngine:
         if color is not None and target_font is not None:
             target_font.color = color
 
+        if font_size is not None and target_font is not None:
+            target_font.size = font_size
+
+        if font_family is not None and target_font is not None:
+            target_font.family = font_family
+
         # If search_text is a substring of the matched line, preserve the full line context
         if matched_obj and search_text in matched_obj.text and search_text != matched_obj.text:
             orig_text_to_use = matched_obj.text
@@ -115,6 +124,9 @@ class PDFModificationEngine:
             original_font=target_font,
             origin=target_origin,
             original_runs=target_runs,
+            underlined=underlined,
+            font_size=font_size,
+            font_family=font_family,
         )
 
         return self.strategy.apply_edit(input_pdf_path, output_pdf_path, operation)

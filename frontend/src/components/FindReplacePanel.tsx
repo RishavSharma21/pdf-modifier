@@ -1,22 +1,42 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Replace, X, ChevronUp, ChevronDown, ArrowRight, FileText, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Search,
+  Replace,
+  X,
+  ChevronUp,
+  ChevronDown,
+  Loader2,
+} from 'lucide-react';
 import type { EditableText } from '../types/pdf';
+
+export interface IndividualMatch {
+  key: string;
+  objectId: string;
+  occurrenceIndex: number;
+  obj: EditableText;
+  startIndex: number;
+  length: number;
+  matchedText: string;
+  pageNumber: number;
+}
 
 interface FindReplacePanelProps {
   isOpen: boolean;
   onClose: () => void;
   editableObjects: EditableText[];
   currentPage?: number;
+  totalPages?: number;
   onReplaceOne: (obj: EditableText, newText: string) => Promise<void>;
-  onMatchChange?: (activeMatchId: string | null, allMatchIds: string[], query: string) => void;
+  onReplaceAll: (matches: IndividualMatch[], replaceText: string) => Promise<void>;
+  onMatchChange?: (activeMatchId: string | null, allMatchIds: string[], query: string, targetPage?: number) => void;
 }
 
 export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   isOpen,
   onClose,
   editableObjects,
-  currentPage,
   onReplaceOne,
+  onReplaceAll,
   onMatchChange,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,7 +45,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const [isReplacing, setIsReplacing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus search on open
+  // Focus search input on open
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
       searchInputRef.current.focus();
@@ -42,45 +62,64 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  interface IndividualMatch {
-    key: string;
-    objectId: string;
-    occurrenceIndex: number;
-    obj: EditableText;
-    startIndex: number;
-    length: number;
-  }
+  // Stably sort objects by page number, then vertical reading order (top to bottom), then horizontal (left to right)
+  const sortedObjects = useMemo(() => {
+    return [...editableObjects].sort((a, b) => {
+      const pA = a.pageNumber || 1;
+      const pB = b.pageNumber || 1;
+      if (pA !== pB) return pA - pB;
+      const yA = a.boundingBox?.y || 0;
+      const yB = b.boundingBox?.y || 0;
+      if (Math.abs(yA - yB) > 2) return yA - yB;
+      const xA = a.boundingBox?.x || 0;
+      const xB = b.boundingBox?.x || 0;
+      return xA - xB;
+    });
+  }, [editableObjects]);
 
-  const matches: IndividualMatch[] = [];
-  const trimmed = searchQuery.trim();
-  if (trimmed) {
-    const lowerQuery = trimmed.toLowerCase();
-    const qLen = lowerQuery.length;
-    for (const obj of editableObjects) {
-      const lowerText = obj.text.toLowerCase();
-      let pos = 0;
+  // Compute matches naturally (case-insensitive, stable keys)
+  const matches = useMemo(() => {
+    const list: IndividualMatch[] = [];
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return list;
+
+    let regex: RegExp;
+    try {
+      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      regex = new RegExp(escaped, 'gi');
+    } catch {
+      return list;
+    }
+
+    for (const obj of sortedObjects) {
+      if (!obj.text) continue;
+      regex.lastIndex = 0;
+      let match: RegExpExecArray | null;
       let occ = 0;
-      while ((pos = lowerText.indexOf(lowerQuery, pos)) !== -1) {
-        matches.push({
+      while ((match = regex.exec(obj.text)) !== null) {
+        list.push({
           key: `${obj.id}__occ_${occ}`,
           objectId: obj.id,
           occurrenceIndex: occ,
           obj,
-          startIndex: pos,
-          length: qLen,
+          startIndex: match.index,
+          length: match[0].length,
+          matchedText: match[0],
+          pageNumber: obj.pageNumber || 1,
         });
         occ++;
-        pos += qLen;
+        if (regex.lastIndex === match.index) {
+          regex.lastIndex++;
+        }
       }
     }
-  }
+    return list;
+  }, [searchQuery, sortedObjects]);
 
-  const safeIndex = matches.length > 0 ? matchIndex % matches.length : 0;
+  const safeIndex = matches.length > 0 ? ((matchIndex % matches.length) + matches.length) % matches.length : 0;
   const currentMatch = matches[safeIndex] ?? null;
 
-  // Guard against infinite re-render loops:
-  // 1. Keep onMatchChange in a ref so changes to the prop function never trigger effect
-  // 2. Only fire when the active match key or query actually changes
+  // Keep onMatchChange in a ref to avoid infinite dependency loops
   const onMatchChangeRef = useRef(onMatchChange);
   useEffect(() => {
     onMatchChangeRef.current = onMatchChange;
@@ -90,7 +129,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const lastQueryRef = useRef<string>('');
 
   useEffect(() => {
-    if (!isOpen || !trimmed || matches.length === 0) {
+    if (!isOpen || !searchQuery.trim() || matches.length === 0) {
       if (lastActiveKeyRef.current !== null || lastQueryRef.current !== '') {
         lastActiveKeyRef.current = null;
         lastQueryRef.current = '';
@@ -98,20 +137,22 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       }
     } else {
       const activeKey = currentMatch?.key ?? null;
-      if (lastActiveKeyRef.current !== activeKey || lastQueryRef.current !== trimmed) {
+      const query = searchQuery.trim();
+      const matchPage = currentMatch?.pageNumber;
+      if (lastActiveKeyRef.current !== activeKey || lastQueryRef.current !== query) {
         lastActiveKeyRef.current = activeKey;
-        lastQueryRef.current = trimmed;
+        lastQueryRef.current = query;
         const allObjectIds = Array.from(new Set(matches.map((m) => m.objectId)));
-        onMatchChangeRef.current?.(activeKey, allObjectIds, trimmed);
+        onMatchChangeRef.current?.(activeKey, allObjectIds, query, matchPage);
       }
     }
-  }, [isOpen, trimmed, currentMatch?.key, matches.length]);
+  }, [isOpen, searchQuery, currentMatch?.key, currentMatch?.pageNumber, matches.length]);
 
   const goNext = () => setMatchIndex((i) => (matches.length ? (i + 1) % matches.length : 0));
   const goPrev = () => setMatchIndex((i) => (matches.length ? (i - 1 + matches.length) % matches.length : 0));
 
   const handleReplaceOne = async () => {
-    if (!currentMatch || !replaceText) return;
+    if (!currentMatch || isReplacing) return;
     setIsReplacing(true);
     try {
       const { obj, startIndex, length } = currentMatch;
@@ -119,23 +160,20 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       const after = obj.text.substring(startIndex + length);
       const newFullText = before + replaceText + after;
       await onReplaceOne(obj, newFullText);
-      goNext();
+    } catch (err) {
+      console.error('Replace one failed:', err);
     } finally {
       setIsReplacing(false);
     }
   };
 
   const handleReplaceAll = async () => {
-    if (!matches.length || !replaceText) return;
+    if (!matches.length || isReplacing) return;
     setIsReplacing(true);
     try {
-      const uniqueObjects = Array.from(new Set(matches.map((m) => m.obj)));
-      const escapedQuery = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(escapedQuery, 'gi');
-      for (const obj of uniqueObjects) {
-        const newFullText = obj.text.replace(regex, replaceText);
-        await onReplaceOne(obj, newFullText);
-      }
+      await onReplaceAll(matches, replaceText);
+    } catch (err) {
+      console.error('Replace all failed:', err);
     } finally {
       setIsReplacing(false);
     }
@@ -144,211 +182,127 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="find-replace-panel" id="find-replace-panel">
-      {/* Sleek Modern Header */}
-      <div className="fr-header">
-        <div className="fr-title-group">
-          <div className="fr-title-icon-badge">
-            <Search size={13} />
-          </div>
-          <span className="fr-title">Find &amp; Replace</span>
-          {currentPage !== undefined && (
-            <span className="fr-scope-badge" title="Search is currently scoped to page">
-              <FileText size={10} />
-              <span>Page {currentPage}</span>
-            </span>
-          )}
+    <div className="find-replace-panel" id="find-replace-panel" role="dialog" aria-label="Find and Replace">
+      {/* Row 1: Find Input & Stepper */}
+      <div className="fr-row fr-find-row">
+        <Search size={14} className="fr-row-icon" />
+        <input
+          ref={searchInputRef}
+          type="search"
+          className="fr-input"
+          placeholder="Find in document…"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setMatchIndex(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (e.shiftKey) goPrev();
+              else goNext();
+            }
+          }}
+          autoComplete="off"
+          spellCheck={false}
+          id="fr-search-input"
+        />
+
+        {searchQuery.trim() && (
+          <span className={`fr-count ${matches.length > 0 ? 'has-results' : 'no-results'}`}>
+            {matches.length > 0 ? `${safeIndex + 1}/${matches.length}` : '0'}
+          </span>
+        )}
+
+        {currentMatch && matches.length > 0 && (
+          <span className="fr-page-pill" title={`Match is on Page ${currentMatch.pageNumber}`}>
+            p.{currentMatch.pageNumber}
+          </span>
+        )}
+
+        <div className="fr-stepper">
+          <button
+            type="button"
+            className="fr-icon-btn"
+            onClick={goPrev}
+            disabled={matches.length === 0}
+            title="Previous (Shift+Enter)"
+            aria-label="Previous match"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            type="button"
+            className="fr-icon-btn"
+            onClick={goNext}
+            disabled={matches.length === 0}
+            title="Next (Enter)"
+            aria-label="Next match"
+          >
+            <ChevronDown size={14} />
+          </button>
         </div>
-        <div className="fr-header-actions">
-          <span className="fr-shortcut-hint">Esc</span>
-          <button className="fr-close-btn" onClick={onClose} title="Close (Esc)" id="btn-fr-close">
-            <X size={14} />
+
+        <div className="fr-divider" />
+
+        <button
+          type="button"
+          className="fr-icon-btn fr-close-btn"
+          onClick={onClose}
+          title="Close (Esc)"
+          aria-label="Close"
+          id="btn-fr-close"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Row 2: Replace Input & Action Buttons */}
+      <div className="fr-row fr-replace-row">
+        <Replace size={14} className="fr-row-icon" />
+        <input
+          type="text"
+          className="fr-input"
+          placeholder="Replace with…"
+          value={replaceText}
+          onChange={(e) => setReplaceText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleReplaceOne();
+            }
+          }}
+          autoComplete="off"
+          spellCheck={false}
+          id="fr-replace-input"
+        />
+
+        <div className="fr-action-buttons">
+          <button
+            type="button"
+            className="fr-action-btn"
+            onClick={handleReplaceOne}
+            disabled={!currentMatch || isReplacing}
+            title="Replace current match"
+            id="btn-fr-replace-one"
+          >
+            {isReplacing ? <Loader2 size={11} className="spin-icon" /> : null}
+            <span>Replace</span>
+          </button>
+
+          <button
+            type="button"
+            className="fr-action-btn fr-action-btn-primary"
+            onClick={handleReplaceAll}
+            disabled={matches.length === 0 || isReplacing}
+            title={`Replace all ${matches.length} occurrences`}
+            id="btn-fr-replace-all"
+          >
+            {isReplacing ? <Loader2 size={11} className="spin-icon" /> : null}
+            <span>All{matches.length > 0 ? ` (${matches.length})` : ''}</span>
           </button>
         </div>
       </div>
-
-      {/* Hidden Empty Datalist — 100% suppresses browser autofill & history dropdown */}
-      <datalist id="fr-empty-datalist" />
-
-      <form className="fr-form" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
-        {/* Row 1: Search Field with Embedded Stepper & Match Badge */}
-        <div className="fr-field-group">
-          <div className="fr-input-container">
-            <Search size={14} className="fr-input-leading-icon" />
-            <input
-              ref={searchInputRef}
-              type="search"
-              className="fr-text-input"
-              placeholder="Search in document..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setMatchIndex(0); }}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              list="fr-empty-datalist"
-              aria-autocomplete="none"
-              data-lpignore="true"
-              data-form-type="other"
-              name="pdf_search_query_no_history"
-              id="fr-search-input-v2"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (e.shiftKey) {
-                    goPrev();
-                  } else {
-                    goNext();
-                  }
-                }
-              }}
-            />
-
-            {/* Trailing accessories: Clear button, Match Counter, and Up/Down Stepper */}
-            <div className="fr-input-trailing">
-              {searchQuery && (
-                <button
-                  type="button"
-                  className="fr-clear-btn"
-                  onClick={() => { setSearchQuery(''); setMatchIndex(0); searchInputRef.current?.focus(); }}
-                  title="Clear search"
-                >
-                  <X size={11} />
-                </button>
-              )}
-
-              {trimmed && (
-                <span className={`fr-count-badge ${matches.length > 0 ? 'has-matches' : 'no-matches'}`}>
-                  {matches.length > 0 ? `${safeIndex + 1}/${matches.length}` : '0 found'}
-                </span>
-              )}
-
-              <div className="fr-nav-stepper">
-                <button
-                  type="button"
-                  className="fr-stepper-btn"
-                  onClick={goPrev}
-                  disabled={matches.length === 0}
-                  title="Previous match (Shift+Enter)"
-                  aria-label="Previous match"
-                >
-                  <ChevronUp size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="fr-stepper-btn"
-                  onClick={goNext}
-                  disabled={matches.length === 0}
-                  title="Next match (Enter)"
-                  aria-label="Next match"
-                >
-                  <ChevronDown size={13} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: Replace Field with Full-Width Alignment */}
-        <div className="fr-field-group">
-          <div className="fr-input-container">
-            <Replace size={14} className="fr-input-leading-icon" />
-            <input
-              type="text"
-              className="fr-text-input"
-              placeholder="Replace with..."
-              value={replaceText}
-              onChange={(e) => setReplaceText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleReplaceOne();
-                }
-              }}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              list="fr-empty-datalist"
-              aria-autocomplete="none"
-              data-lpignore="true"
-              data-form-type="other"
-              name="pdf_replace_text_no_history"
-              id="fr-replace-input-v2"
-            />
-
-            {replaceText && (
-              <div className="fr-input-trailing">
-                <button
-                  type="button"
-                  className="fr-clear-btn"
-                  onClick={() => setReplaceText('')}
-                  title="Clear replacement text"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Row 3: Cohesive Actions Toolbar */}
-        <div className="fr-actions-row">
-          <div className="fr-shortcuts-hint">
-            <span>Jump <kbd>↵</kbd> <kbd>⇧↵</kbd></span>
-          </div>
-
-          <div className="fr-btn-group">
-            <button
-              type="button"
-              className="fr-btn fr-btn-secondary"
-              onClick={handleReplaceOne}
-              disabled={!currentMatch || !replaceText || isReplacing}
-              title="Replace current highlighted match"
-              id="btn-fr-replace-one"
-            >
-              <ArrowRight size={12} />
-              <span>Replace</span>
-            </button>
-
-            <button
-              type="button"
-              className="fr-btn fr-btn-primary"
-              onClick={handleReplaceAll}
-              disabled={matches.length === 0 || !replaceText || isReplacing}
-              title="Replace all occurrences on this page"
-              id="btn-fr-replace-all"
-            >
-              {isReplacing ? (
-                <>
-                  <Loader2 size={13} className="spin-icon" />
-                  <span>Replacing...</span>
-                </>
-              ) : (
-                <>
-                  <span>Replace All</span>
-                  {matches.length > 0 && (
-                    <span className="fr-btn-count-pill">{matches.length}</span>
-                  )}
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* Row 4: Elegant Context Snippet when Active */}
-      {currentMatch && searchQuery && (
-        <div className="fr-preview-card">
-          <div className="fr-preview-meta">
-            <span className="fr-preview-dot" />
-            <span className="fr-preview-title">Match {safeIndex + 1} of {matches.length}</span>
-          </div>
-          <div className="fr-preview-snippet" title={currentMatch.obj.text}>
-            &ldquo;{currentMatch.obj.text}&rdquo;
-          </div>
-        </div>
-      )}
     </div>
   );
 };

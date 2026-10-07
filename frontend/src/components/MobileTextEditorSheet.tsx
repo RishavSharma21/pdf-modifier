@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { X, Check, Trash2, Palette, RotateCcw, Loader2, Quote } from 'lucide-react';
+import { Trash2, Palette, RotateCcw, Loader2, Quote, EyeOff } from 'lucide-react';
 import type { EditableText } from '../types/pdf';
 
 interface MobileTextEditorSheetProps {
@@ -11,6 +11,7 @@ interface MobileTextEditorSheetProps {
   onCommit: () => void;
   onCancel: () => void;
   onDeleteLine: () => void;
+  onRedactLine?: () => void;
   isSubmitting?: boolean;
 }
 
@@ -31,6 +32,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
   onCommit,
   onCancel,
   onDeleteLine,
+  onRedactLine,
   isSubmitting = false,
 }) => {
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -110,8 +112,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
             disabled={isSubmitting}
             aria-label="Cancel editing"
           >
-            <X size={16} />
-            <span>Cancel</span>
+            Cancel
           </button>
 
           <div className="mobile-sheet-title-group">
@@ -136,10 +137,7 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
                 <span>Saving</span>
               </>
             ) : (
-              <>
-                <Check size={16} />
-                <span>Save</span>
-              </>
+              <span>Save</span>
             )}
           </button>
         </div>
@@ -228,6 +226,20 @@ export const MobileTextEditorSheet: React.FC<MobileTextEditorSheetProps> = ({
               >
                 <RotateCcw size={12} />
                 <span>Reset</span>
+              </button>
+            )}
+
+            {/* Redact Line */}
+            {onRedactLine && (
+              <button
+                type="button"
+                className="mobile-sheet-btn-redact"
+                onClick={onRedactLine}
+                disabled={isSubmitting}
+                title="Redact / Blackout"
+              >
+                <EyeOff size={13} />
+                <span>Redact</span>
               </button>
             )}
 

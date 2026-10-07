@@ -4,10 +4,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { InlineEditorBar } from './InlineEditorBar';
+import { InlineTextInsertBar } from './InlineTextInsertBar';
 import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
 import { MobileTextEditorSheet } from './MobileTextEditorSheet';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, Type } from 'lucide-react';
 import { useToast } from './Toast';
 
 // Set up worker
@@ -39,14 +40,24 @@ const getFontTypography = (font: any) => {
   };
 };
 
-const measureTextWidth = (text: string, font: any, pxSize: number) => {
+const measureTextWidth = (
+  text: string,
+  font: any,
+  pxSize: number,
+  customFamily?: string
+): number => {
+  if (!text) return 0;
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  if (!ctx) return text.length * pxSize * 0.55;
-  const isBold = font.weight === 'bold' || /bold/i.test(font.family || '');
-  const isItalic = font.style === 'italic' || /italic/i.test(font.family || '');
-  ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${pxSize}px ${font.family || 'sans-serif'}`;
-  return ctx.measureText(text).width;
+  if (!ctx) return Math.ceil(text.length * pxSize * 0.6);
+  const typo = getFontTypography(font || {});
+  const family = customFamily
+    ? customFamily.split(',')[0].replace(/['"]/g, '').trim()
+    : typo.family;
+  const isItalic = typo.fontStyle === 'italic';
+  const isBold = typo.fontWeight >= 700;
+  ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${pxSize}px ${family}`;
+  return Math.ceil(ctx.measureText(text).width);
 };
 
 // Word-level search highlight calculator
@@ -67,10 +78,11 @@ const computeWordHighlights = (
   const ctx = canvas.getContext('2d');
   if (!ctx) return [];
 
-  const fontStyle = font.style === 'italic' ? 'italic ' : '';
-  const fontWeight = font.weight === 'bold' ? 'bold ' : '';
-  const fontSize = Math.max(font.size * scale, 1);
-  ctx.font = `${fontStyle}${fontWeight}${fontSize}px ${font.family || 'sans-serif'}`;
+  const typo = getFontTypography(font || {});
+  const isItalic = typo.fontStyle === 'italic';
+  const isBold = typo.fontWeight >= 700;
+  const fontSize = Math.max((font?.size || 10) * scale, 1);
+  ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${typo.family}`;
 
   const measuredTotal = ctx.measureText(text).width || 1;
   const ratio = (totalBoxWidth * scale) / measuredTotal;
@@ -134,6 +146,26 @@ interface PdfPageItemProps {
     type: 'move' | 'nw' | 'ne' | 'se' | 'sw'
   ) => void;
   isMobile?: boolean;
+  isAddTextMode?: boolean;
+  isUnderlined?: boolean;
+  activeFontSize?: number;
+  activeFontFamily?: string;
+  pendingInsert?: {
+    x: number;
+    y: number;
+    pageNum: number;
+    text: string;
+    fontSize: number;
+    fontWeight: 'normal' | 'bold';
+    fontFamily: string;
+    color: string;
+    isUnderlined: boolean;
+  } | null;
+  modifiedPage?: number | null;
+  onNewTextBoxRequest?: (x: number, y: number, pageNum: number) => void;
+  onUpdatePendingText?: (text: string) => void;
+  onCommitPendingText?: () => void;
+  onCancelPendingText?: () => void;
 }
 
 const PdfPageItem: React.FC<PdfPageItemProps> = ({
@@ -148,6 +180,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   activeText,
   activeColor,
   activeBgColor,
+  activeFontSize,
+  activeFontFamily,
   selectedImage,
   adjustmentState,
   activeSnapshotUrl,
@@ -161,11 +195,22 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   onSelectImageWithSnapshot,
   onPointerDownImage,
   isMobile = false,
+  isAddTextMode = false,
+  isUnderlined = false,
+  pendingInsert,
+  modifiedPage,
+  onNewTextBoxRequest,
+  onUpdatePendingText,
+  onCommitPendingText,
+  onCancelPendingText,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isNearViewport, setIsNearViewport] = useState<boolean>(pageNum <= 4);
   const [isRendered, setIsRendered] = useState<boolean>(false);
+  const renderedDocRef = useRef<any>(null);
+  const renderedScaleRef = useRef<number>(scale);
+  const renderedRotationRef = useRef<number>(pageMeta?.rotation ?? 0);
 
   // Exact dimensions calculated from PageMeta so scrollbar height is physically 100% accurate
   const baseWidth = pageMeta?.width || 595.28;
@@ -197,6 +242,21 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   // Render Page on Canvas via PDF.js with double-buffering
   useEffect(() => {
     if (!isNearViewport || !pdfDoc || !canvasRef.current) return;
+
+    // If already rendered at this scale, and a document edit occurred on a DIFFERENT page (and rotation unchanged), skip re-render!
+    if (
+      isRendered &&
+      renderedDocRef.current !== pdfDoc &&
+      renderedScaleRef.current === scale &&
+      renderedRotationRef.current === (pageMeta?.rotation ?? 0) &&
+      modifiedPage !== null &&
+      modifiedPage !== undefined &&
+      modifiedPage !== pageNum
+    ) {
+      renderedDocRef.current = pdfDoc;
+      return;
+    }
+
     let renderTask: any = null;
     let isCancelled = false;
 
@@ -205,7 +265,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         const page = await pdfDoc.getPage(pageNum);
         if (isCancelled) return;
 
-        const viewport = page.getViewport({ scale });
+        const pageRotation = pageMeta?.rotation ?? 0;
+        const viewport = page.getViewport({ scale, rotation: pageRotation });
         const outputScale = window.devicePixelRatio || 1;
         const w = Math.floor(viewport.width * outputScale);
         const h = Math.floor(viewport.height * outputScale);
@@ -235,10 +296,18 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           visibleCtx.setTransform(1, 0, 0, 1, 0, 0);
           visibleCtx.drawImage(offscreen, 0, 0);
         }
+
+        renderedDocRef.current = pdfDoc;
+        renderedScaleRef.current = scale;
+        renderedRotationRef.current = pageRotation;
         setIsRendered(true);
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNum}:`, err);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsRendered(true);
         }
       }
     };
@@ -248,7 +317,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       isCancelled = true;
       if (renderTask) renderTask.cancel();
     };
-  }, [isNearViewport, pdfDoc, pageNum, scale]);
+  }, [isNearViewport, pdfDoc, pageNum, scale, pageMeta?.rotation, modifiedPage]);
 
   // Filter text & image objects belonging to this page
   const pageObjects = editableObjects.filter((o) => (o.pageNumber || 1) === pageNum);
@@ -256,13 +325,41 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 
   return (
     <div
-      className="pdf-page-wrapper"
+      className={`pdf-page-wrapper ${isAddTextMode ? 'is-add-text-mode' : ''}`}
       ref={containerRef}
       id={`pdf-page-${pageNum}`}
       data-page-num={pageNum}
       style={{
         width: `${targetWidthPx}px`,
         height: `${targetHeightPx}px`,
+        cursor: isAddTextMode ? 'crosshair' : 'default',
+      }}
+      onClick={(e) => {
+        if (isAddTextMode && onNewTextBoxRequest) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
+            const clickY = Math.round(((e.clientY - rect.top) / scale) * 10) / 10;
+            onNewTextBoxRequest(clickX, clickY, pageNum);
+          }
+        }
+      }}
+      onDoubleClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest('.editable-span-overlay') ||
+          target.closest('.image-box-overlay') ||
+          target.closest('.active-inline-editor-wrapper') ||
+          target.closest('.insert-text-canvas-wrapper')
+        ) {
+          return;
+        }
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect && onNewTextBoxRequest) {
+          const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
+          const clickY = Math.round(((e.clientY - rect.top) / scale) * 10) / 10;
+          onNewTextBoxRequest(clickX, clickY, pageNum);
+        }
       }}
     >
       {/* Page Number Badge (clean document separation like Google Drive) */}
@@ -483,11 +580,30 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;
           const activeColorHex = activeColor || origHex;
           const typo = getFontTypography(obj.font);
-          const fontSizePx = Math.max(obj.font.size * scale, 1);
+          const baseSize = (activeFontSize && activeFontSize > 0) ? activeFontSize : (obj.font?.size || 10);
+          const fontSizePx = Math.max(baseSize * scale, 1);
 
-          const editorWidth = activeText === obj.text
-            ? bboxWidth
-            : Math.max(bboxWidth, measureTextWidth(activeText, obj.font, fontSizePx) + 6);
+          const isFillLine = /__/.test(obj.text) || isUnderlined || /^(signature|name|date|title|by):\s*/i.test(obj.text);
+
+          // Measure accurate text width in browser canvas
+          const measuredTextW = measureTextWidth(activeText, obj.font, fontSizePx, activeFontFamily);
+
+          // Generous safety buffer for horizontal padding, borders, caret, and browser font-metric variances:
+          // - 1.5px border left + right = 3px
+          // - 4px padding left + right = 8px
+          // - Caret & italic overhang & browser font differences = 10-18px
+          // Giving at least 22px (or ~1.1x fontSizePx) guarantees the last word/character is NEVER cut off.
+          const safetyBuffer = Math.max(22, Math.round(fontSizePx * 1.1));
+          const textContentWidth = Math.max(bboxWidth, measuredTextW);
+          const editorWidth = isFillLine
+            ? Math.max(bboxWidth + safetyBuffer, 140 * scale)
+            : textContentWidth + safetyBuffer;
+
+          // Vertical height & alignment:
+          // Ensure enough height so ascenders, descenders (g, j, p, q, y) and borders never get clipped.
+          const editorHeight = Math.max(bboxHeight, Math.round(fontSizePx * 1.3) + 4);
+          const heightDiff = editorHeight - bboxHeight;
+          const editorTop = heightDiff > 0 ? bboxTop - Math.round(heightDiff / 2) : bboxTop;
 
           return (
             <div
@@ -496,25 +612,33 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               style={{
                 position: 'absolute',
                 left: `${bboxLeft}px`,
-                top: `${bboxTop}px`,
+                top: `${editorTop}px`,
                 width: `${editorWidth}px`,
-                height: `${bboxHeight}px`,
+                height: `${editorHeight}px`,
                 zIndex: 40,
+                borderBottom: isFillLine ? '1.5px solid #475569' : undefined,
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <input
                 ref={inputRef}
+                autoFocus
                 type="text"
                 className="inline-wysiwyg-input"
                 value={activeText}
                 onChange={(e) => setActiveText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onFocus={(e) => {
+                  e.currentTarget.scrollLeft = 0;
+                }}
                 style={{
                   fontSize: `${fontSizePx}px`,
-                  fontFamily: typo.family,
+                  fontFamily: activeFontFamily
+                    ? activeFontFamily.split(',')[0].replace(/['"]/g, '').trim()
+                    : typo.family,
                   fontWeight: typo.fontWeight,
                   fontStyle: typo.fontStyle,
+                  textDecoration: 'none',
                   color: activeColorHex,
                   backgroundColor: activeBgColor || '#ffffff',
                   width: '100%',
@@ -548,6 +672,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               top: `${bboxTop}px`,
               width: `${Math.max(bboxWidth, 24)}px`,
               height: `${Math.max(bboxHeight, 16)}px`,
+              zIndex: 25,
+              pointerEvents: 'auto',
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -572,6 +698,51 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           </div>
         );
       })}
+
+      {/* Active New Text Insertion Box on Canvas */}
+      {pendingInsert && pendingInsert.pageNum === pageNum && (
+        <div
+          className="insert-text-canvas-wrapper"
+          style={{
+            position: 'absolute',
+            left: `${pendingInsert.x * scale}px`,
+            top: `${pendingInsert.y * scale}px`,
+            zIndex: 60,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            autoFocus
+            type="text"
+            className="insert-text-canvas-input"
+            value={pendingInsert.text}
+            onChange={(e) => onUpdatePendingText?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onCommitPendingText?.();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancelPendingText?.();
+              }
+            }}
+            placeholder="Type text here…"
+            style={{
+              fontSize: `${Math.max(pendingInsert.fontSize * scale, 11)}px`,
+              fontFamily: pendingInsert.fontFamily,
+              fontWeight: pendingInsert.fontWeight === 'bold' ? 700 : 400,
+              textDecoration: pendingInsert.isUnderlined ? 'underline' : 'none',
+              textUnderlineOffset: '2.5px',
+              textDecorationThickness: '1.5px',
+              color: pendingInsert.color,
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -594,6 +765,7 @@ interface PdfViewerProps {
   activeMatchKey?: string | null;
   allSearchMatchIds?: string[];
   searchQuery?: string;
+  modifiedPage?: number | null;
   onPageChange?: (page: number, shouldScroll?: boolean) => void;
   onCommitEdit: (
     originalText: string,
@@ -602,7 +774,10 @@ interface PdfViewerProps {
     targetTextId?: string,
     boundingBox?: any,
     origin?: [number, number],
-    pageNumber?: number
+    pageNumber?: number,
+    underlined?: boolean,
+    fontSize?: number,
+    fontFamily?: string
   ) => Promise<void>;
   onDeleteImage?: (boundingBox: any, pageNumber?: number) => Promise<void>;
   onReplaceImage?: (boundingBox: any, file: File) => Promise<void>;
@@ -613,7 +788,22 @@ interface PdfViewerProps {
     cropBox?: any,
     pageNumber?: number
   ) => Promise<void>;
+  onRedactArea?: (boundingBox: any, pageNumber?: number) => Promise<void>;
   onActiveEditChange?: (isEditing: boolean) => void;
+  isAddTextMode?: boolean;
+  onToggleAddText?: () => void;
+  onInsertText?: (
+    text: string,
+    x: number,
+    y: number,
+    pageNumber?: number,
+    fontSize?: number,
+    fontWeight?: string,
+    fontFamily?: string,
+    color?: string,
+    underlined?: boolean
+  ) => Promise<void>;
+  onExitAddTextMode?: () => void;
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
@@ -631,18 +821,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   activeMatchKey,
   allSearchMatchIds,
   searchQuery,
+  modifiedPage,
   onPageChange,
   onCommitEdit,
   onDeleteImage,
   onReplaceImage,
   onAdjustImage,
+  onRedactArea,
   onActiveEditChange,
+  isAddTextMode = false,
+  onToggleAddText,
+  onInsertText,
+  onExitAddTextMode,
 }) => {
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
   const [pdfDoc, setPdfDoc] = useState<any>(externalPdfDoc || null);
+  const [activeFontFamily, setActiveFontFamily] = useState<string>('Helvetica');
 
   // Sync external pdfDoc
   useEffect(() => {
@@ -656,6 +853,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [activeText, setActiveText] = useState<string>('');
   const [activeColor, setActiveColor] = useState<string>('');
   const [activeBgColor, setActiveBgColor] = useState<string>('#ffffff');
+  const [activeFontSize, setActiveFontSize] = useState<number>(10);
 
   // Screen size check for mobile-first interaction
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
@@ -678,6 +876,119 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [adjustmentState, setAdjustmentState] = useState<ImageAdjustmentState | null>(null);
   const [activeSnapshotUrl, setActiveSnapshotUrl] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
+  const [dismissedScannedPages, setDismissedScannedPages] = useState<Set<number>>(new Set());
+  const [isUnderlined, setIsUnderlined] = useState<boolean>(false);
+
+  // Helper to extract clean human-readable font family name
+  const cleanPdfFontFamily = (raw?: string): string => {
+    if (!raw) return 'Helvetica';
+    let name = raw.split('+').pop() || raw;
+    name = name.replace(/-(Bold|Italic|BoldItalic|Regular|MT|PS|Roman|SemiBold|Light)/gi, '');
+    name = name.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+    if (/helv/i.test(name)) return 'Helvetica';
+    if (/arial/i.test(name)) return 'Arial';
+    if (/times/i.test(name)) return 'Times New Roman';
+    if (/cour/i.test(name)) return 'Courier';
+    return name || 'Helvetica';
+  };
+
+  const [pendingInsert, setPendingInsert] = useState<{
+    x: number;
+    y: number;
+    pageNum: number;
+    text: string;
+    fontSize: number;
+    fontWeight: 'normal' | 'bold';
+    fontFamily: string;
+    color: string;
+    isUnderlined: boolean;
+    detectedFontFamily?: string;
+    availableDocumentFonts?: string[];
+    isSameAsPdf?: boolean;
+  } | null>(null);
+
+  const handleNewTextBoxRequest = (x: number, y: number, pageNum: number) => {
+    setActiveObj(null);
+    onActiveEditChange?.(false);
+    setSelectedImage(null);
+    setAdjustmentState(null);
+
+    // 1. Gather unique document fonts from editableObjects
+    const docFonts = Array.from(
+      new Set(
+        editableObjects
+          .map((o) => cleanPdfFontFamily(o.font?.family))
+          .filter(Boolean)
+      )
+    );
+
+    // 2. Find nearest text object on this page to (x, y) to auto-detect typography
+    const pageObjs = editableObjects.filter((o) => (o.pageNumber || 1) === pageNum);
+    let nearestObj: EditableText | null = null;
+    let minDistance = Infinity;
+
+    for (const obj of pageObjs) {
+      const bbox = obj.boundingBox || (obj as any).bounding_box;
+      if (!bbox) continue;
+      const cx = bbox.x + bbox.width / 2;
+      const cy = bbox.y + bbox.height / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearestObj = obj;
+      }
+    }
+
+    const detectedFam = cleanPdfFontFamily(nearestObj?.font?.family || docFonts[0] || 'Helvetica');
+    const detectedSize = nearestObj?.font?.size ? Math.min(Math.max(Math.round(nearestObj.font.size), 8), 72) : 14;
+    const detectedWeight: 'normal' | 'bold' = nearestObj?.font?.weight === 'bold' ? 'bold' : 'normal';
+    let detectedColor = '#000000';
+    if (nearestObj?.font?.color && Array.isArray(nearestObj.font.color) && nearestObj.font.color.length >= 3) {
+      const rgb = nearestObj.font.color;
+      detectedColor = `#${Math.round(rgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(rgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(rgb[2] * 255).toString(16).padStart(2, '0')}`;
+    }
+
+    setPendingInsert({
+      x,
+      y,
+      pageNum,
+      text: '',
+      fontSize: detectedSize,
+      fontWeight: detectedWeight,
+      fontFamily: detectedFam,
+      color: detectedColor,
+      isUnderlined: false,
+      detectedFontFamily: detectedFam,
+      availableDocumentFonts: docFonts,
+      isSameAsPdf: true,
+    });
+  };
+
+  const handleCommitPendingText = async () => {
+    if (!pendingInsert || !pendingInsert.text.trim()) {
+      setPendingInsert(null);
+      return;
+    }
+    const { text, x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
+    setPendingInsert(null);
+    if (isAddTextMode) {
+      onExitAddTextMode?.();
+    }
+    try {
+      if (onInsertText) {
+        await onInsertText(text.trim(), x, y, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
+      }
+    } catch {
+      showToast('Failed to insert text', 'error');
+    }
+  };
+
+  const handleCancelPendingText = () => {
+    setPendingInsert(null);
+    if (isAddTextMode) {
+      onExitAddTextMode?.();
+    }
+  };
 
   // Preserve scroll position across PDF reloads
   const savedScrollTopRef = useRef<number>(0);
@@ -750,7 +1061,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const objId = activeMatchKey.split('__occ_')[0];
     const el = document.getElementById(`editable-${objId}`);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      isProgrammaticScrollRef.current = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      const timer = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 550);
+      return () => clearTimeout(timer);
     }
   }, [activeMatchKey]);
 
@@ -765,6 +1081,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       if (isProgrammaticScrollRef.current) return;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        if (isProgrammaticScrollRef.current) return;
         const viewportRect = viewport.getBoundingClientRect();
         const midY = viewportRect.top + viewportRect.height / 2;
 
@@ -802,9 +1119,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   // Start in-place edit
   const handleStartEdit = (obj: EditableText) => {
+    if (activeObj && activeObj.id !== obj.id) {
+      handleCommit();
+    }
     isColorModifiedRef.current = false;
     setActiveObj(obj);
-    setActiveText(obj.text);
+    setActiveFontSize(Math.round((obj.font?.size || 10) * 10) / 10);
+    setActiveFontFamily(obj.font?.family || 'Helvetica');
+    const hasUnderscoreLine =
+      Boolean(obj.text && /__/.test(obj.text)) ||
+      obj.font?.style === 'underline' ||
+      /^(signature|name|date|title|by):\s*/i.test(obj.text);
+    setIsUnderlined(hasUnderscoreLine);
+
+    // If this is a form fill line with underscores, strip the placeholder underscores
+    // so the user can type their value cleanly directly onto the line without cursor getting stuck in underscores
+    let initialText = obj.text;
+    if (obj.text && /__/.test(obj.text)) {
+      initialText = obj.text.replace(/_+/g, '').trimEnd();
+      if (initialText.endsWith(':')) {
+        initialText += ' ';
+      }
+    }
+    setActiveText(initialText);
+
     const origRgb = obj.font.color || [0, 0, 0];
     const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;
     setActiveColor(origHex);
@@ -833,20 +1171,29 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
     const origin = activeObj.origin;
     const pageNum = activeObj.pageNumber || currentPage;
+    const origSize = Math.round((activeObj.font?.size || 10) * 10) / 10;
+    const fontSize = activeFontSize !== origSize ? activeFontSize : undefined;
+    const origFont = activeObj.font?.family || 'Helvetica';
+    const newFontFamily = activeFontFamily !== origFont ? activeFontFamily : undefined;
 
     setActiveObj(null);
     onActiveEditChange?.(false);
 
-    if (origText === newText && !color) return;
+    if (origText === newText && !color && fontSize === undefined && !newFontFamily) return;
 
     try {
-      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum);
+      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily);
     } catch {
       showToast('Failed to save changes. Please try again.', 'error');
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
+      e.preventDefault();
+      setIsUnderlined((v) => !v);
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       handleCommit();
@@ -872,6 +1219,23 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       await onCommitEdit(origText, '', undefined, targetId, bbox, origin, pageNum);
     } catch {
       showToast('Failed to delete line', 'error');
+    }
+  };
+
+  const handleRedactLine = async () => {
+    if (!activeObj) return;
+    const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
+    const pageNum = activeObj.pageNumber || currentPage;
+
+    setActiveObj(null);
+    onActiveEditChange?.(false);
+
+    try {
+      if (onRedactArea) {
+        await onRedactArea(bbox, pageNum);
+      }
+    } catch {
+      showToast('Failed to redact text', 'error');
     }
   };
 
@@ -1069,6 +1433,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         rotation: 0,
       }));
 
+  // Notice for scanned/image pages without selectable text
+  const isScannedNoticeVisible =
+    !isProcessing &&
+    pdfDoc != null &&
+    editableObjects.length === 0 &&
+    !dismissedScannedPages.has(currentPage);
+
   return (
     <div className="pdf-viewer-root">
       {/* Docked Contextual Edit Subbar (Desktop only) */}
@@ -1080,14 +1451,70 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             isColorModifiedRef.current = true;
             setActiveColor(hex);
           }}
+          fontFamily={activeFontFamily}
+          onFontFamilyChange={(family) => setActiveFontFamily(family)}
+          fontSize={activeFontSize}
+          onFontSizeChange={(size) => setActiveFontSize(size)}
           onCommit={handleCommit}
           onCancel={() => {
             setActiveObj(null);
             onActiveEditChange?.(false);
           }}
           onDeleteLine={handleDeleteLine}
+          onRedactLine={handleRedactLine}
           isSubmitting={isProcessing}
+          isUnderlined={isUnderlined}
+          onToggleUnderline={() => setIsUnderlined((v) => !v)}
+          onAddTextClick={() => {
+            setActiveObj(null);
+            onActiveEditChange?.(false);
+            if (onToggleAddText) onToggleAddText();
+          }}
         />
+      )}
+
+      {/* Default Document Action Subbar (Desktop only) */}
+      {!activeObj && !selectedImage && !pendingInsert && !isMobileScreen && (
+        <div
+          className="pdf-editor-subbar pdf-default-subbar"
+          id="pdf-default-subbar"
+        >
+          <div className="editor-subbar-left">
+            {onToggleAddText && (
+              <button
+                type="button"
+                className={`btn-subbar-add-text ${isAddTextMode ? 'active' : ''}`}
+                onClick={onToggleAddText}
+                id="btn-subbar-add-text"
+                aria-label="Add text"
+                title="Add Text (Shortcut: T)"
+              >
+                <Type size={14} />
+                <span>Add Text</span>
+              </button>
+            )}
+
+            <div className="subbar-divider" />
+
+            <span className="subbar-idle-hint">
+              {isAddTextMode
+                ? 'Click anywhere on the document to place text'
+                : 'Click any text in the PDF to edit directly'}
+            </span>
+          </div>
+
+          <div className="editor-subbar-right">
+            {isAddTextMode && onExitAddTextMode && (
+              <button
+                type="button"
+                className="subbar-btn subbar-btn-cancel"
+                onClick={onExitAddTextMode}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Dedicated Mobile Text Editor Sheet (Clean card with top actions, never hidden by keyboard) */}
@@ -1107,6 +1534,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             onActiveEditChange?.(false);
           }}
           onDeleteLine={handleDeleteLine}
+          onRedactLine={handleRedactLine}
           isSubmitting={isProcessing}
         />
       )}
@@ -1147,14 +1575,54 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         onApplyCrop={handleApplyCrop}
       />
 
+      {/* Docked Contextual Subbar for Inserting New Text */}
+      {pendingInsert && (
+        <InlineTextInsertBar
+          fontFamily={pendingInsert.fontFamily}
+          onFontFamilyChange={(family) =>
+            setPendingInsert((prev) => (prev ? { ...prev, fontFamily: family } : null))
+          }
+          fontSize={pendingInsert.fontSize}
+          onFontSizeChange={(size) =>
+            setPendingInsert((prev) => (prev ? { ...prev, fontSize: size } : null))
+          }
+          isBold={pendingInsert.fontWeight === 'bold'}
+          onToggleBold={() =>
+            setPendingInsert((prev) =>
+              prev
+                ? { ...prev, fontWeight: prev.fontWeight === 'bold' ? 'normal' : 'bold' }
+                : null
+            )
+          }
+          isUnderlined={pendingInsert.isUnderlined}
+          onToggleUnderline={() =>
+            setPendingInsert((prev) =>
+              prev ? { ...prev, isUnderlined: !prev.isUnderlined } : null
+            )
+          }
+          color={pendingInsert.color}
+          onColorChange={(hex) =>
+            setPendingInsert((prev) => (prev ? { ...prev, color: hex } : null))
+          }
+          onCommit={handleCommitPendingText}
+          onCancel={handleCancelPendingText}
+          isSubmitting={isProcessing}
+          detectedFontFamily={pendingInsert.detectedFontFamily}
+          availableDocumentFonts={pendingInsert.availableDocumentFonts}
+          isSameAsPdf={pendingInsert.isSameAsPdf}
+          onToggleSameAsPdf={(val) =>
+            setPendingInsert((prev) => (prev ? { ...prev, isSameAsPdf: val } : null))
+          }
+        />
+      )}
+
       {/* Main Continuous Document Viewport (Google Drive style continuous scrolling) */}
       <div
         className="canvas-viewport"
         id="canvas-viewport"
         onClick={() => {
           if (activeObj) {
-            setActiveObj(null);
-            onActiveEditChange?.(false);
+            handleCommit();
           }
           if (!adjustmentState?.isModified) {
             setSelectedImage(null);
@@ -1165,6 +1633,28 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       >
         {/* Top Activity Progress Bar */}
         {isProcessing && <div className="canvas-top-progress-bar" />}
+
+        {/* Scanned / Image PDF Notice Banner */}
+        {isScannedNoticeVisible && (
+          <div className="scanned-pdf-banner" role="status" onClick={(e) => e.stopPropagation()}>
+            <span className="scanned-pdf-icon">📄</span>
+            <span className="scanned-pdf-text">
+              <strong>Scanned document notice:</strong> No selectable text found on this page. Vector PDF editing requires selectable text.
+            </span>
+            <button
+              type="button"
+              className="scanned-pdf-dismiss"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissedScannedPages((prev) => new Set(prev).add(currentPage));
+              }}
+              title="Dismiss notice"
+              aria-label="Dismiss notice"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Continuous Multi-Page Column */}
         <div className="pdf-continuous-scroll-column">
@@ -1182,6 +1672,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               activeText={activeText}
               activeColor={activeColor}
               activeBgColor={activeBgColor}
+              activeFontSize={activeFontSize}
+              activeFontFamily={activeFontFamily}
               selectedImage={selectedImage}
               adjustmentState={adjustmentState}
               activeSnapshotUrl={activeSnapshotUrl}
@@ -1195,6 +1687,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}
               isMobile={isMobileScreen}
+              isAddTextMode={isAddTextMode}
+              isUnderlined={isUnderlined}
+              pendingInsert={pendingInsert}
+              modifiedPage={modifiedPage}
+              onNewTextBoxRequest={handleNewTextBoxRequest}
+              onUpdatePendingText={(text) => setPendingInsert((prev) => prev ? { ...prev, text } : null)}
+              onCommitPendingText={handleCommitPendingText}
+              onCancelPendingText={handleCancelPendingText}
             />
           ))}
         </div>

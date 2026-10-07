@@ -25,6 +25,9 @@ class EditOperation:
     target_run_id: Optional[str] = None
     origin: Optional[Tuple[float, float]] = None
     original_runs: Optional[List[Any]] = None
+    underlined: Optional[bool] = None
+    font_size: Optional[float] = None
+    font_family: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {

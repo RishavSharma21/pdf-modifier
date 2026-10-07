@@ -94,7 +94,10 @@ export async function editPdfText(
   color?: string,
   targetTextId?: string,
   boundingBox?: any,
-  origin?: [number, number]
+  origin?: [number, number],
+  underlined?: boolean,
+  fontSize?: number,
+  fontFamily?: string
 ): Promise<EditResult> {
   const res = await fetch(`${API_BASE}/edit`, {
     method: 'POST',
@@ -108,6 +111,9 @@ export async function editPdfText(
       targetTextId,
       boundingBox,
       origin,
+      underlined,
+      fontSize,
+      fontFamily,
     }),
   });
 
@@ -162,7 +168,8 @@ export async function insertPdfText(
   fontSize: number = 14,
   fontWeight: string = 'normal',
   fontFamily: string = 'Helvetica',
-  color?: string
+  color?: string,
+  underlined?: boolean
 ): Promise<EditResult> {
   const res = await fetch(`${API_BASE}/insert-text`, {
     method: 'POST',
@@ -177,6 +184,7 @@ export async function insertPdfText(
       fontWeight,
       fontFamily,
       color,
+      underlined,
     }),
   });
 
@@ -301,6 +309,68 @@ export async function adjustPdfImage(
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: 'Adjust image failed' }));
     throw new Error(extractDetail(body));
+  }
+
+  return res.json();
+}
+
+export async function rotatePdfPage(
+  sessionId: string,
+  page: number,
+  angle: number = 90
+): Promise<{ success: boolean; session: SessionInfo; textObjects?: any[]; imageObjects?: any[] }> {
+  const res = await fetch(`${API_BASE}/rotate-page`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, page, angle }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Rotate page failed' }));
+    throw new Error(err.detail || 'Failed to rotate page');
+  }
+
+  return res.json();
+}
+
+export async function deletePdfPage(
+  sessionId: string,
+  page: number
+): Promise<{ success: boolean; session: SessionInfo; newPage: number; textObjects?: any[]; imageObjects?: any[] }> {
+  const res = await fetch(`${API_BASE}/delete-page`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, page }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Delete page failed' }));
+    throw new Error(err.detail || 'Failed to delete page');
+  }
+
+  return res.json();
+}
+
+export async function redactPdfArea(
+  sessionId: string,
+  page: number,
+  boundingBox: any,
+  fillColor: string = '#000000'
+): Promise<{ success: boolean; textObjects?: any[]; imageObjects?: any[] }> {
+  const res = await fetch(`${API_BASE}/redact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId,
+      page,
+      boundingBox,
+      fillColor,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Redaction failed' }));
+    throw new Error(err.detail || 'Failed to redact content');
   }
 
   return res.json();

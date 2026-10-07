@@ -92,7 +92,7 @@ export const FontSizeControl: React.FC<FontSizeControlProps> = ({
           onClick={() => setIsEditing(true)}
           aria-label="Edit font size"
         >
-          {rounded} pt
+          {rounded}<span className="size-unit-pt"> pt</span>
         </button>
       )}
 

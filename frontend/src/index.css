@@ -984,10 +984,6 @@ body {
 
 .pdf-canvas {
   display: block;
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: crisp-edges;
-  transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 /* Page Skeleton — Rich Document Structure with Adaptive Shimmer */
@@ -5082,7 +5078,7 @@ html.theme-transitioning .find-replace-card {
     max-width: calc(100vw - 20px);
   }
 
-  /* 5. In-Line WYSIWYG Subbar on Mobile — Sleek Top Dock (Immune to Keyboard) */
+  /* 5. In-Line WYSIWYG Subbar on Mobile — Compact Zero-Scroll Screen Fit */
   .pdf-editor-subbar {
     position: sticky !important;
     top: 0 !important;
@@ -5091,8 +5087,8 @@ html.theme-transitioning .find-replace-card {
     right: 0 !important;
     width: 100% !important;
     height: auto !important;
-    min-height: 44px !important;
-    padding: 6px 10px !important;
+    min-height: 38px !important;
+    padding: 4px 6px !important;
     background: var(--surface-1) !important;
     border-bottom: 1px solid var(--border-strong) !important;
     border-top: none !important;
@@ -5101,91 +5097,115 @@ html.theme-transitioning .find-replace-card {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 6px !important;
+    gap: 3px !important;
+    overflow: visible !important;
     animation: subbarFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
-  .subbar-mode-title {
-    display: none !important; /* Hide verbose title on phones to save space */
-  }
-
-  .subbar-font-info {
-    display: none !important;
-  }
-
-  .subbar-font-tags {
-    display: none !important;
-  }
-
-  .subbar-divider {
-    display: none !important;
-  }
-
-  .subbar-icon-badge {
+  .desktop-only-label,
+  .desktop-only-divider,
+  .subbar-mode-title,
+  .subbar-font-info,
+  .subbar-font-tags,
+  .subbar-divider,
+  .size-unit-pt {
     display: none !important;
   }
 
   .editor-subbar-left {
     flex: 1 1 auto !important;
     min-width: 0 !important;
-    gap: 6px !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    scrollbar-width: none !important;
-    padding-right: 4px !important;
-  }
-
-  .editor-subbar-left::-webkit-scrollbar {
-    display: none !important;
+    gap: 3px !important;
+    overflow: visible !important;
+    flex-wrap: nowrap !important;
+    padding-right: 0 !important;
   }
 
   .editor-subbar-right {
     flex-shrink: 0 !important;
-    gap: 5px !important;
+    gap: 3px !important;
   }
 
-  .subbar-action-save,
-  .subbar-action-cancel {
-    height: 32px !important;
-    padding: 0 10px !important;
-    font-size: 11.5px !important;
-    font-weight: 600 !important;
+  .subbar-icon-badge {
+    width: 26px !important;
+    height: 26px !important;
+    flex-shrink: 0 !important;
   }
 
   .subbar-font-trigger {
-    max-width: 95px !important;
-    padding: 3px 6px !important;
-    height: 30px !important;
+    max-width: 76px !important;
+    padding: 2px 4px !important;
+    height: 28px !important;
+    gap: 2px !important;
   }
 
   .subbar-font-name {
-    max-width: 60px !important;
+    max-width: 50px !important;
+    font-size: 10.5px !important;
+  }
+
+  .insert-size-stepper {
+    height: 28px !important;
+    padding: 1px 2px !important;
+    gap: 1px !important;
+  }
+
+  .size-step-btn {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  .size-display-label {
     font-size: 11px !important;
+    min-width: 16px !important;
+    padding: 0 1px !important;
   }
 
   .subbar-btn-toggle {
-    width: 30px !important;
-    height: 30px !important;
+    width: 27px !important;
+    height: 28px !important;
   }
 
   .subbar-color-group {
-    padding: 3px 6px !important;
-    height: 30px !important;
+    padding: 2px 4px !important;
+    height: 28px !important;
+    gap: 2px !important;
+  }
+
+  .subbar-color-swatch-circle {
+    width: 13px !important;
+    height: 13px !important;
   }
 
   .subbar-action-tool {
-    height: 30px !important;
+    height: 28px !important;
+    width: 27px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  .subbar-action-cancel {
+    height: 28px !important;
+    width: 27px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  .subbar-action-save {
+    height: 28px !important;
     padding: 0 7px !important;
+    font-size: 11px !important;
+    gap: 2px !important;
   }
 
   /* Popovers on Mobile — Centered Clean Modals under the Top Bar */
   .pro-font-popover {
     position: fixed !important;
-    top: 54px !important;
-    left: 12px !important;
-    right: 12px !important;
+    top: 48px !important;
+    left: 10px !important;
+    right: 10px !important;
     width: auto !important;
-    max-width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 20px) !important;
     max-height: 55vh !important;
     z-index: 1000 !important;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4) !important;
@@ -5193,11 +5213,11 @@ html.theme-transitioning .find-replace-card {
 
   .pro-color-popover {
     position: fixed !important;
-    top: 54px !important;
-    left: 12px !important;
-    right: 12px !important;
+    top: 48px !important;
+    left: 10px !important;
+    right: 10px !important;
     width: auto !important;
-    max-width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 20px) !important;
     max-height: 65vh !important;
     overflow-y: auto !important;
     z-index: 1000 !important;

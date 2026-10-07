@@ -247,24 +247,23 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 
         // Calculate native device pixel ratio for crystal-clear retina rendering
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-        // Support up to 3x Retina (all modern iPhones / iPads / high-DPI screens)
-        let outputScale = Math.min(Math.max(dpr, 1), 3.0);
+        // Guarantee at least 2.0x (144+ DPI) on standard desktop displays, and up to 3.0x on Retina
+        let outputScale = Math.min(Math.max(dpr, 2.0), 3.0);
 
-        let w = Math.floor(cssViewport.width * outputScale);
-        let h = Math.floor(cssViewport.height * outputScale);
-
-        // Hardware safety clamp for iOS Safari WebKit memory limit (4096px / 16MP)
+        // Hardware safety clamp for WebKit memory limit (4096px / 16MP)
         const MAX_DIM = 4096;
         const MAX_AREA = 16_000_000;
-        if (w > MAX_DIM || h > MAX_DIM || w * h > MAX_AREA) {
-          const downscale = Math.min(MAX_DIM / Math.max(w, h), Math.sqrt(MAX_AREA / (w * h)));
+        const estW = cssViewport.width * outputScale;
+        const estH = cssViewport.height * outputScale;
+        if (estW > MAX_DIM || estH > MAX_DIM || estW * estH > MAX_AREA) {
+          const downscale = Math.min(MAX_DIM / Math.max(estW, estH), Math.sqrt(MAX_AREA / (estW * estH)));
           outputScale *= downscale;
-          w = Math.floor(cssViewport.width * outputScale);
-          h = Math.floor(cssViewport.height * outputScale);
         }
 
         // Render with true HiDPI scaled viewport directly in PDF.js for razor-sharp vector & text rasterization
         const scaledViewport = page.getViewport({ scale: scale * outputScale, rotation: pageRotation });
+        const w = Math.ceil(scaledViewport.width);
+        const h = Math.ceil(scaledViewport.height);
 
         let offscreen: HTMLCanvasElement | null = document.createElement('canvas');
         offscreen.width = w;
@@ -296,17 +295,16 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         if (visibleCanvas.width !== w || visibleCanvas.height !== h) {
           visibleCanvas.width = w;
           visibleCanvas.height = h;
-          visibleCanvas.style.width = Math.floor(cssViewport.width) + 'px';
-          visibleCanvas.style.height = Math.floor(cssViewport.height) + 'px';
         }
+        visibleCanvas.style.width = Math.round(cssViewport.width) + 'px';
+        visibleCanvas.style.height = Math.round(cssViewport.height) + 'px';
 
         const visibleCtx = visibleCanvas.getContext('2d');
         if (visibleCtx) {
-          visibleCtx.imageSmoothingEnabled = false;
           visibleCtx.drawImage(offscreen, 0, 0);
         }
 
-        // CRITICAL FOR IOS SAFARI: Immediately release offscreen GPU backing store!
+        // Immediately release offscreen GPU backing store
         offscreen.width = 0;
         offscreen.height = 0;
         offscreen = null;
@@ -861,9 +859,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     isSameAsPdf?: boolean;
   } | null>(null);
 
+  // When Add Text mode is turned off, immediately dismiss any pending text insertion box!
+  useEffect(() => {
+    if (!isAddTextMode) {
+      setPendingInsert(null);
+      currentEditingTextRef.current = '';
+      if (!activeObj) {
+        onActiveEditChange?.(false);
+      }
+    }
+  }, [isAddTextMode, activeObj, onActiveEditChange]);
+
   const handleNewTextBoxRequest = (x: number, y: number, pageNum: number) => {
     setActiveObj(null);
-    onActiveEditChange?.(false);
     setSelectedImage(null);
     setAdjustmentState(null);
 
@@ -917,17 +925,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       isSameAsPdf: true,
     });
     currentEditingTextRef.current = '';
+    onActiveEditChange?.(true);
   };
 
   const handleCommitPendingText = async (overrideText?: string) => {
     const textToInsert = (overrideText !== undefined ? overrideText : currentEditingTextRef.current || pendingInsert?.text || '').trim();
     if (!pendingInsert || !textToInsert) {
       setPendingInsert(null);
+      onActiveEditChange?.(false);
       return;
     }
     const { x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
     setPendingInsert(null);
     currentEditingTextRef.current = '';
+    onActiveEditChange?.(false);
     if (isAddTextMode) {
       onExitAddTextMode?.();
     }
@@ -943,6 +954,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const handleCancelPendingText = () => {
     setPendingInsert(null);
     currentEditingTextRef.current = '';
+    onActiveEditChange?.(false);
     if (isAddTextMode) {
       onExitAddTextMode?.();
     }
@@ -1464,8 +1476,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             {onToggleAddText && (
               <button
                 type="button"
-                className={`btn-subbar-add-text ${isAddTextMode ? 'active' : ''}`}
-                onClick={onToggleAddText}
+                className={`btn-subbar-add-text ${isAddTextMode || pendingInsert ? 'active' : ''}`}
+                onClick={() => {
+                  if (isAddTextMode || pendingInsert) {
+                    setPendingInsert(null);
+                    currentEditingTextRef.current = '';
+                    onActiveEditChange?.(false);
+                    if (onExitAddTextMode) onExitAddTextMode();
+                    else onToggleAddText();
+                  } else {
+                    onToggleAddText();
+                  }
+                }}
                 id="btn-subbar-add-text"
                 aria-label="Add text"
                 title="Add Text (Shortcut: T)"

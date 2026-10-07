@@ -57,17 +57,30 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
       onClick={(e) => e.stopPropagation()}
       id="text-formatting-subbar"
     >
-      {/* Left / Center: All typography tools responsive and cleanly aligned */}
+      {/* Left/Center Tools: Fully visible on-screen without requiring scroll */}
       <div className="editor-subbar-left">
-        {/* Mode Chip */}
-        <div className={`subbar-icon-badge ${mode === 'insert' ? 'insert-text-badge' : 'edit-text-badge'}`}>
-          <Type size={14} />
-        </div>
-        <span className="subbar-mode-title">
+        {/* Mode / T-Symbol Dismiss Button: Clicking 'T' again dismisses the text box! */}
+        {mode === 'insert' ? (
+          <button
+            type="button"
+            className="subbar-icon-badge insert-text-badge is-clickable"
+            onClick={onCancel}
+            title="Click T again to dismiss text box"
+            aria-label="Dismiss text box"
+          >
+            <Type size={14} />
+          </button>
+        ) : (
+          <div className="subbar-icon-badge edit-text-badge">
+            <Type size={14} />
+          </div>
+        )}
+
+        <span className="subbar-mode-title desktop-only-label">
           {mode === 'insert' ? 'Add Text' : 'Edit Text'}
         </span>
 
-        <div className="subbar-divider" />
+        <div className="subbar-divider desktop-only-divider" />
 
         {/* Font Family Dropdown */}
         <div className="subbar-font-anchor">
@@ -82,7 +95,6 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
             aria-label="Font family"
             title="Font Family"
           >
-            <Type size={12} className="subbar-font-icon" />
             <span className="subbar-font-name">{displayFontName}</span>
             <ChevronDown size={11} className={`subbar-font-chevron ${isFontPickerOpen ? 'open' : ''}`} />
           </button>
@@ -133,8 +145,6 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
           </button>
         </div>
 
-        <div className="subbar-divider" />
-
         {/* Color Swatch Picker */}
         <div className="subbar-color-anchor">
           <button
@@ -169,7 +179,6 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
         {/* Redact & Delete actions for existing text */}
         {mode === 'edit' && (
           <>
-            <div className="subbar-divider" />
             {onRedact && (
               <button
                 type="button"
@@ -179,7 +188,7 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
                 aria-label="Redact text"
               >
                 <EyeOff size={13} />
-                <span className="subbar-action-label">Redact</span>
+                <span className="subbar-action-label desktop-only-label">Redact</span>
               </button>
             )}
             {onDelete && (
@@ -191,7 +200,7 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
                 aria-label="Delete text"
               >
                 <Trash2 size={13} />
-                <span className="subbar-action-label">Delete</span>
+                <span className="subbar-action-label desktop-only-label">Delete</span>
               </button>
             )}
           </>
@@ -209,7 +218,7 @@ export const TextFormattingSubbar: React.FC<TextFormattingSubbarProps> = ({
           aria-label="Cancel"
         >
           <X size={13} />
-          <span>Cancel</span>
+          <span className="desktop-only-label">Cancel</span>
         </button>
 
         <button

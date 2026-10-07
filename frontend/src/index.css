@@ -7015,10 +7015,11 @@ html.theme-transitioning .find-replace-card {
   position: absolute;
   display: inline-flex;
   align-items: baseline;
-  user-select: none;
   z-index: 65;
   pointer-events: auto;
   box-sizing: border-box;
+  -webkit-user-select: auto !important;
+  user-select: auto !important;
 }
 
 .canvas-inline-input-frame {
@@ -7046,12 +7047,15 @@ html.theme-transitioning .find-replace-card {
   border: none !important;
   outline: none !important;
   background: transparent !important;
-  padding: 0 !important;
+  padding: 0 3px !important;
   margin: 0 !important;
   box-shadow: none !important;
   line-height: normal !important;
   caret-color: var(--accent) !important;
   touch-action: manipulation;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
 }
 
 .canvas-inline-wysiwyg-input::placeholder {

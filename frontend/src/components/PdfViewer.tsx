@@ -859,16 +859,24 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     isSameAsPdf?: boolean;
   } | null>(null);
 
-  // When Add Text mode is turned off, immediately dismiss any pending text insertion box!
+  // When Add Text mode is toggled, auto-spawn on mobile and dismiss when turned off!
   useEffect(() => {
-    if (!isAddTextMode) {
+    if (isAddTextMode) {
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+      if (isMobile && !pendingInsert) {
+        const pageMeta = pages?.find((p) => p.page === currentPage) || pages?.[0];
+        const pw = pageMeta?.width || 595.28;
+        const ph = pageMeta?.height || 841.89;
+        handleNewTextBoxRequest(Math.round(pw / 2 - 70), Math.round(ph / 3.5), currentPage);
+      }
+    } else {
       setPendingInsert(null);
       currentEditingTextRef.current = '';
       if (!activeObj) {
         onActiveEditChange?.(false);
       }
     }
-  }, [isAddTextMode, activeObj, onActiveEditChange]);
+  }, [isAddTextMode]);
 
   const handleNewTextBoxRequest = (x: number, y: number, pageNum: number) => {
     setActiveObj(null);

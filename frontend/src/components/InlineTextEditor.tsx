@@ -43,30 +43,41 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   // Local state for 0ms instantaneous, zero-lag typing
   const [text, setText] = useState<string>(initialText);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   // Keep parent live ref updated without re-rendering parent
   useEffect(() => {
     onLiveChange?.(text);
   }, [text, onLiveChange]);
 
-  // Auto-focus with cursor at end
+  // Auto-focus on mount and scroll smoothly above virtual keyboard on mobile
   useEffect(() => {
     const el = inputRef.current;
     if (el) {
       el.focus();
       const len = el.value.length;
       el.setSelectionRange(len, len);
+      if (isMobile) {
+        const timer = setTimeout(() => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+        return () => clearTimeout(timer);
+      }
     }
-  }, []);
+  }, [isMobile]);
 
-  // Exact matching font size at current page scale
-  const fontSizePx = Math.max(Math.round(fontSize * scale * 10) / 10, 8);
+  // Exact matching font size. On mobile, clamp to at least 16px to prevent iOS Safari auto-zoom
+  const fontSizePx = isMobile
+    ? Math.max(Math.round(fontSize * scale * 10) / 10, 16)
+    : Math.max(Math.round(fontSize * scale * 10) / 10, 10);
 
   // Strictly clamp width within PDF page bounds so text NEVER escapes the PDF
   const availableMaxWidth = Math.max(pageWidthPx - leftPx - 8, 40);
   const approxCharWidth = fontSizePx * 0.58;
   const measuredWidth = Math.round((text.length + 1) * approxCharWidth);
-  const minWidth = initialWidth ? Math.min(initialWidth + 6, availableMaxWidth) : (isNew ? 110 : 36);
+  const minWidth = initialWidth
+    ? Math.min(initialWidth + 6, availableMaxWidth)
+    : (isNew ? (isMobile ? 140 : 110) : 36);
 
   const contentWidth = Math.min(
     Math.max(measuredWidth, minWidth),
@@ -75,7 +86,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
 
   const contentHeight = initialHeight
     ? Math.max(initialHeight + 2, fontSizePx * 1.25)
-    : Math.max(fontSizePx * 1.35, 20);
+    : Math.max(fontSizePx * 1.35, isMobile ? 32 : 20);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -105,8 +116,19 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         maxWidth: `${availableMaxWidth}px`,
         zIndex: 65,
       }}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        inputRef.current?.focus();
+      }}
       onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        inputRef.current?.focus();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+        inputRef.current?.focus();
+      }}
     >
       <div
         className="canvas-inline-input-frame"

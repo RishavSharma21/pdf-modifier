@@ -7070,6 +7070,16 @@ html.theme-transitioning .find-replace-card {
   font-size: 0.9em;
 }
 
+.canvas-inline-wysiwyg-input::selection {
+  background: rgba(37, 99, 235, 0.35) !important;
+  color: #1e3a8a !important;
+}
+
+[data-theme="dark"] .canvas-inline-wysiwyg-input::selection {
+  background: rgba(59, 130, 246, 0.45) !important;
+  color: #ffffff !important;
+}
+
 
 
 

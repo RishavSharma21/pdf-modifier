@@ -780,7 +780,7 @@ export function App() {
         const newTexts = res.textObjects;
         setEditableObjects((prev) => {
           const others = prev.filter((o) => (o.pageNumber || 1) !== targetPage);
-          return [...others, ...newTexts];
+          return sortEditableTexts([...others, ...newTexts]);
         });
         pageAnalysisCache.current.set(targetPage, { textObjects: newTexts, imageObjects: res.imageObjects || [] });
       } else {
@@ -1091,6 +1091,10 @@ export function App() {
             (o) => o.id !== optimisticId && (o.pageNumber || 1) !== targetPage
           );
           return sortEditableTexts([...others, ...(res.textObjects || [])]);
+        });
+        pageAnalysisCache.current.set(targetPage, {
+          textObjects: res.textObjects,
+          imageObjects: res.imageObjects || [],
         });
       }
       if (res.imageObjects) {

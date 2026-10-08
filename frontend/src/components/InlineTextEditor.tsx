@@ -88,14 +88,40 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     ? Math.max(initialHeight + 2, fontSizePx * 1.25)
     : Math.max(fontSizePx * 1.35, isMobile ? 32 : 20);
 
+  const isCommittedRef = useRef<boolean>(false);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      onCommit(text);
+      if (!isCommittedRef.current) {
+        isCommittedRef.current = true;
+        onCommit(text);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      isCommittedRef.current = true;
       onCancel();
     }
+  };
+
+  const handleBlur = (e: React.FocusEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    // Don't auto-commit if the user clicked inside the text formatting subbar
+    if (related && (related.closest('#text-formatting-subbar') || related.closest('.canvas-inline-text-wrapper'))) {
+      return;
+    }
+    setTimeout(() => {
+      if (!isCommittedRef.current) {
+        isCommittedRef.current = true;
+        if (text.trim()) {
+          onCommit(text);
+        } else if (isNew) {
+          onCancel();
+        } else {
+          onCommit(text);
+        }
+      }
+    }, 120);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,6 +171,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
           placeholder={isNew ? 'Type text here…' : ''}
           style={{
             width: '100%',

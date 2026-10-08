@@ -69,26 +69,50 @@ class PDFModificationEngine:
 
         matched_obj: Optional[EditableText] = None
 
-        # Priority 1: Match by exact target_text_id
+        # Priority 1: Match by exact target_text_id AND text content agreement
+        clean_search = (search_text or "").strip()
         if target_text_id:
             for obj in page_objects:
                 if obj.id == target_text_id:
-                    matched_obj = obj
-                    break
+                    if not clean_search or clean_search in obj.text or obj.text in clean_search:
+                        matched_obj = obj
+                        break
 
-        # Priority 2: Match by nearest bounding box if provided
+        # Priority 2: Match by nearest bounding box with text agreement
         if not matched_obj and bounding_box:
             best_dist = float("inf")
             for obj in page_objects:
                 dist = (obj.bounding_box.x - bounding_box.x)**2 + (obj.bounding_box.y - bounding_box.y)**2
-                if dist < best_dist and dist < 400:  # within ~20 points
+                text_agrees = not clean_search or (clean_search in obj.text or obj.text in clean_search)
+                if text_agrees and dist < best_dist and dist < 2500:  # within ~50 points
                     best_dist = dist
                     matched_obj = obj
 
-        # Priority 3: Fallback substring search
-        if not matched_obj:
+        # Priority 3: Fallback content search (exact or substring)
+        if not matched_obj and clean_search:
             for obj in page_objects:
-                if search_text in obj.text or obj.text in search_text:
+                if obj.text.strip() == clean_search:
+                    matched_obj = obj
+                    break
+            if not matched_obj:
+                for obj in page_objects:
+                    if clean_search in obj.text or obj.text in clean_search:
+                        matched_obj = obj
+                        break
+
+        # Priority 4: Nearest bounding box without strict text match
+        if not matched_obj and bounding_box:
+            best_dist = float("inf")
+            for obj in page_objects:
+                dist = (obj.bounding_box.x - bounding_box.x)**2 + (obj.bounding_box.y - bounding_box.y)**2
+                if dist < best_dist and dist < 900:  # within ~30 points
+                    best_dist = dist
+                    matched_obj = obj
+
+        # Priority 5: Fallback to target_text_id if nothing else matched
+        if not matched_obj and target_text_id:
+            for obj in page_objects:
+                if obj.id == target_text_id:
                     matched_obj = obj
                     break
 

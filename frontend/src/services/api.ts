@@ -97,7 +97,8 @@ export async function editPdfText(
   origin?: [number, number],
   underlined?: boolean,
   fontSize?: number,
-  fontFamily?: string
+  fontFamily?: string,
+  fontWeight?: string
 ): Promise<EditResult> {
   const res = await fetch(`${API_BASE}/edit`, {
     method: 'POST',
@@ -114,6 +115,7 @@ export async function editPdfText(
       underlined,
       fontSize,
       fontFamily,
+      fontWeight,
     }),
   });
 

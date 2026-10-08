@@ -29,6 +29,7 @@ class PDFModificationEngine:
         underlined: Optional[bool] = None,
         font_size: Optional[float] = None,
         font_family: Optional[str] = None,
+        font_weight: Optional[str] = None,
     ) -> ModificationResult:
         """Find a target text run on the specified page and replace it in the content stream."""
         if not os.path.exists(input_pdf_path):
@@ -130,6 +131,9 @@ class PDFModificationEngine:
 
         if font_family is not None and target_font is not None:
             target_font.family = font_family
+
+        if font_weight is not None and target_font is not None:
+            target_font.weight = font_weight
 
         # If search_text is a substring of the matched line, preserve the full line context
         if matched_obj and search_text in matched_obj.text and search_text != matched_obj.text:

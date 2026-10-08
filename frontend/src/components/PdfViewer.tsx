@@ -427,9 +427,13 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         if (
           target.closest('.editable-span-overlay') ||
           target.closest('.image-box-overlay') ||
+          target.closest('.canvas-inline-text-wrapper') ||
           target.closest('.active-inline-editor-wrapper') ||
           target.closest('.insert-text-canvas-wrapper')
         ) {
+          return;
+        }
+        if (activeObj || pendingInsert) {
           return;
         }
         const rect = containerRef.current?.getBoundingClientRect();
@@ -642,27 +646,43 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           const pageWidthPx = (pageMeta?.width || 595.28) * scale;
 
           return (
-            <InlineTextEditor
-              key={obj.id}
-              initialText={activeText}
-              initialSelectionRange={activeSelectionRange}
-              font={obj.font}
-              scale={scale}
-              color={curColor}
-              fontSize={activeFontSize || obj.font?.size || 12}
-              fontFamily={activeFontFamily || obj.font?.family || 'Helvetica'}
-              isBold={activeFontWeight === 'bold'}
-              isUnderlined={Boolean(isUnderlined)}
-              leftPx={bboxLeft}
-              topPx={bboxTop}
-              pageWidthPx={pageWidthPx}
-              initialWidth={bboxWidth}
-              initialHeight={bboxHeight}
-              onLiveChange={onLiveTextChange}
-              onCommit={(txt) => onCommitEdit?.(txt)}
-              onCancel={() => onCancelEdit?.()}
-              isNew={false}
-            />
+            <React.Fragment key={obj.id}>
+              {/* Opaque white background mask over original text on canvas to eliminate ghosting/bleed-through */}
+              <div
+                className="canvas-original-text-mask"
+                style={{
+                  position: 'absolute',
+                  left: `${bboxLeft - 2}px`,
+                  top: `${bboxTop - 2}px`,
+                  width: `${bboxWidth + 4}px`,
+                  height: `${bboxHeight + 4}px`,
+                  background: '#ffffff',
+                  zIndex: 60,
+                  pointerEvents: 'none',
+                }}
+              />
+              <InlineTextEditor
+                key={obj.id}
+                initialText={activeText}
+                initialSelectionRange={activeSelectionRange}
+                font={obj.font}
+                scale={scale}
+                color={curColor}
+                fontSize={activeFontSize || obj.font?.size || 12}
+                fontFamily={activeFontFamily || obj.font?.family || 'Helvetica'}
+                isBold={activeFontWeight === 'bold'}
+                isUnderlined={Boolean(isUnderlined)}
+                leftPx={bboxLeft}
+                topPx={bboxTop}
+                pageWidthPx={pageWidthPx}
+                initialWidth={bboxWidth}
+                initialHeight={bboxHeight}
+                onLiveChange={onLiveTextChange}
+                onCommit={(txt) => onCommitEdit?.(txt)}
+                onCancel={() => onCancelEdit?.()}
+                isNew={false}
+              />
+            </React.Fragment>
           );
         }
 
@@ -694,8 +714,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               const rect = e.currentTarget.getBoundingClientRect();
               const clickX = e.clientX - rect.left;
               const ratio = rect.width > 0 ? Math.max(0, Math.min(1, clickX / rect.width)) : 0;
-              const wordRange = getWordRangeAtRatio(obj.text, ratio);
-              onStartEdit(obj, wordRange);
+              const charIdx = Math.round(ratio * (obj.text?.length || 0));
+              onStartEdit(obj, [charIdx, charIdx]);
             }}
             onDoubleClick={(e) => {
               if (touchHandledRef.current) return;
@@ -794,7 +814,8 @@ interface PdfViewerProps {
     pageNumber?: number,
     underlined?: boolean,
     fontSize?: number,
-    fontFamily?: string
+    fontFamily?: string,
+    fontWeight?: string
   ) => Promise<void>;
   onDeleteImage?: (boundingBox: any, pageNumber?: number) => Promise<void>;
   onReplaceImage?: (boundingBox: any, file: File) => Promise<void>;
@@ -1158,6 +1179,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   // Active in-place editing state
   const isColorModifiedRef = useRef<boolean>(false);
   const origUnderlinedRef = useRef<boolean>(false);
+  const origFontWeightRef = useRef<'normal' | 'bold'>('normal');
 
   // Relocate pending inserted text box position
   const handleRelocatePendingText = (newX: number, newY: number) => {
@@ -1178,11 +1200,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const origFont = obj.font?.family || 'Helvetica';
     const newFontFamily = activeFontFamily !== origFont ? activeFontFamily : undefined;
     const isUnderlineModified = isUnderlined !== origUnderlinedRef.current;
+    const isWeightModified = activeFontWeight !== origFontWeightRef.current;
+    const newFontWeight = isWeightModified ? activeFontWeight : undefined;
 
-    if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified) return;
+    if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified && !isWeightModified) return;
 
     try {
-      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily);
+      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily, newFontWeight);
     } catch {
       showToast('Failed to save changes. Please try again.', 'error');
     }
@@ -1229,7 +1253,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
     setActiveText(initialText);
     currentEditingTextRef.current = initialText;
-    setActiveFontWeight(obj.font?.weight === 'bold' ? 'bold' : 'normal');
+    const initialWeight = obj.font?.weight === 'bold' ? 'bold' : 'normal';
+    setActiveFontWeight(initialWeight);
+    origFontWeightRef.current = initialWeight;
 
     const origRgb = obj.font.color || [0, 0, 0];
     const origHex = `#${Math.round(origRgb[0] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[1] * 255).toString(16).padStart(2, '0')}${Math.round(origRgb[2] * 255).toString(16).padStart(2, '0')}`;

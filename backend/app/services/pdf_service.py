@@ -194,6 +194,7 @@ class PDFService:
         underlined: Optional[bool] = None,
         font_size: Optional[float] = None,
         font_family: Optional[str] = None,
+        font_weight: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Apply surgical text replacement to the session's PDF."""
         current_path = self.get_session_file_path(session_id)
@@ -240,6 +241,7 @@ class PDFService:
             underlined=underlined,
             font_size=font_size,
             font_family=font_family,
+            font_weight=font_weight,
         )
 
         if result.success:

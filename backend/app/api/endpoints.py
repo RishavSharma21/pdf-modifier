@@ -26,6 +26,7 @@ class EditRequest(BaseModel):
     underlined: Optional[bool] = None
     fontSize: Optional[float] = None
     fontFamily: Optional[str] = None
+    fontWeight: Optional[str] = None
 
 
 class UndoRequest(BaseModel):
@@ -135,6 +136,7 @@ async def edit_text(req: EditRequest):
             underlined=req.underlined,
             font_size=req.fontSize,
             font_family=req.fontFamily,
+            font_weight=req.fontWeight,
         )
         print(f"[EDIT RESULT] success={result.get('success')}, error={result.get('error')}, strategy={result.get('strategy')}")
         if not result["success"]:

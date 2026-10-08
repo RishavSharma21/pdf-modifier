@@ -721,7 +721,8 @@ export function App() {
     pageNumber?: number,
     underlined?: boolean,
     fontSize?: number,
-    fontFamily?: string
+    fontFamily?: string,
+    fontWeight?: string
   ) => {
     if (!session) return;
     const targetPage = pageNumber ?? currentPage;
@@ -750,6 +751,9 @@ export function App() {
           if (fontFamily !== undefined) {
             updatedFont.family = fontFamily;
           }
+          if (fontWeight !== undefined) {
+            updatedFont.weight = fontWeight === 'bold' ? 'bold' : 'normal';
+          }
           return {
             ...obj,
             text: newText,
@@ -773,7 +777,8 @@ export function App() {
         origin,
         underlined,
         fontSize,
-        fontFamily
+        fontFamily,
+        fontWeight
       );
 
       if (res.textObjects && res.textObjects.length > 0) {

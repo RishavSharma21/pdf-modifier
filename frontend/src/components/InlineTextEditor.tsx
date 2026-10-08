@@ -4,6 +4,7 @@ import type { FontInfo } from '../types/pdf';
 
 export interface InlineTextEditorProps {
   initialText: string;
+  initialSelectionRange?: [number, number];
   font?: FontInfo;
   scale: number;
   color: string;
@@ -25,6 +26,7 @@ export interface InlineTextEditorProps {
 
 export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   initialText,
+  initialSelectionRange,
   font,
   scale,
   color,
@@ -44,22 +46,35 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   isNew = false,
 }) => {
   const [text, setText] = useState<string>(initialText);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isCommittedRef = useRef<boolean>(false);
+  const isPointerDownInsideRef = useRef<boolean>(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+
+  // Sync state if initialText changes
+  useEffect(() => {
+    setText(initialText);
+  }, [initialText]);
 
   // Keep parent live ref updated without re-rendering parent
   useEffect(() => {
     onLiveChange?.(text);
   }, [text, onLiveChange]);
 
-  // Auto-focus on mount
+  // Auto-focus on mount and set initial word selection range if provided
   useEffect(() => {
-    const el = inputRef.current;
+    const el = textareaRef.current;
     if (el) {
       el.focus();
-      if (isNew) {
+      if (initialSelectionRange && initialSelectionRange[0] <= initialSelectionRange[1]) {
+        el.setSelectionRange(initialSelectionRange[0], initialSelectionRange[1]);
+        requestAnimationFrame(() => {
+          if (document.activeElement === el) {
+            el.setSelectionRange(initialSelectionRange[0], initialSelectionRange[1]);
+          }
+        });
+      } else if (isNew) {
         el.setSelectionRange(0, 0);
       }
       if (isMobile) {
@@ -69,11 +84,29 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [isMobile, isNew]);
+  }, [isMobile, isNew, initialSelectionRange]);
 
-  // Click outside listener: commits on background click, ignores subbars / modals / other words
+  // Safe outside click listener: only commits when pointerdown AND pointerup happen outside
+  // This guarantees user can drag across words to select text without the editor closing!
   useEffect(() => {
-    const handleDocumentMouseDown = (e: MouseEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      if (wrapperRef.current && wrapperRef.current.contains(target)) {
+        isPointerDownInsideRef.current = true;
+        return;
+      }
+      isPointerDownInsideRef.current = false;
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      // If pointer interaction started inside editor, user was selecting text with drag!
+      if (isPointerDownInsideRef.current) {
+        isPointerDownInsideRef.current = false;
+        return;
+      }
+
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
@@ -118,41 +151,80 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       }
     };
 
-    document.addEventListener('mousedown', handleDocumentMouseDown);
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointerup', handlePointerUp);
     return () => {
-      document.removeEventListener('mousedown', handleDocumentMouseDown);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerup', handlePointerUp);
     };
   }, [text, isNew, onCommit, onCancel]);
 
-  // Font size calculation
+  // Dynamic multi-line width & height measurement based on text lines and font size
+  const textLines = text.split('\n');
+
+  // Exact matching font size. On mobile, clamp to at least 16px to prevent iOS Safari auto-zoom
   const fontSizePx = isMobile
     ? Math.max(Math.round(fontSize * scale * 10) / 10, 16)
     : Math.max(Math.round(fontSize * scale * 10) / 10, 10);
 
-  // Clamp width within PDF page bounds
   const availableMaxWidth = Math.max(pageWidthPx - leftPx - 8, 40);
-  const approxCharWidth = fontSizePx * 0.58;
-  const measuredWidth = Math.round((text.length + 1) * approxCharWidth);
-  const minWidth = initialWidth
-    ? Math.min(initialWidth + 6, availableMaxWidth)
-    : (isNew ? (isMobile ? 140 : 110) : 36);
+
+  // Measure exact pixel width of each line using 2D canvas context
+  const maxLineWidth = React.useMemo(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = `${isBold ? 'bold' : 'normal'} ${fontSizePx}px ${fontFamily || font?.family || 'Helvetica, Arial, sans-serif'}`;
+        let maxW = 0;
+        for (const l of textLines) {
+          const w = ctx.measureText(l).width;
+          if (w > maxW) maxW = w;
+        }
+        return maxW;
+      }
+    } catch {}
+    const maxLen = Math.max(...textLines.map((l) => l.length), 0);
+    return maxLen * fontSizePx * 0.6;
+  }, [text, fontSizePx, isBold, fontFamily, font?.family]);
+
+  // Dynamic width: scales with longest line length AND font size
+  const placeholderWidth = isNew && !text ? fontSizePx * 7.5 : 0;
+  const neededWidth = Math.ceil(Math.max(maxLineWidth, placeholderWidth) + 16);
+  const minWidth = isNew
+    ? Math.max(Math.round(fontSizePx * 5), 80)
+    : Math.min((initialWidth || 36) + 6, availableMaxWidth);
 
   const contentWidth = Math.min(
-    Math.max(measuredWidth, minWidth),
+    Math.max(neededWidth, minWidth),
     availableMaxWidth
   );
 
-  const contentHeight = initialHeight
-    ? Math.max(initialHeight + 2, fontSizePx * 1.25)
-    : Math.max(fontSizePx * 1.35, isMobile ? 32 : 20);
+  // Dynamic height: scales with number of lines AND font size
+  const lineCount = Math.max(textLines.length, 1);
+  const lineHeightPx = Math.round(fontSizePx * 1.35);
+  const contentHeight = Math.max(
+    lineCount * lineHeightPx + 8,
+    isNew ? lineHeightPx + 8 : (initialHeight ? Math.max(initialHeight + 2, lineHeightPx + 6) : 24)
+  );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
-      e.preventDefault();
-      if (!isCommittedRef.current) {
-        isCommittedRef.current = true;
-        onCommit(text);
+      // Enter without shift commits single-line edits, or Ctrl+Enter always commits
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (!isCommittedRef.current) {
+          isCommittedRef.current = true;
+          onCommit(text);
+        }
+      } else if (!isNew && !e.shiftKey) {
+        e.preventDefault();
+        if (!isCommittedRef.current) {
+          isCommittedRef.current = true;
+          onCommit(text);
+        }
       }
+      // In Add Text mode, Enter naturally creates new lines, auto-expanding the box!
     } else if (e.key === 'Escape') {
       e.preventDefault();
       isCommittedRef.current = true;
@@ -160,7 +232,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setText(val);
     onLiveChange?.(val);
@@ -207,10 +279,17 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         maxWidth: `${availableMaxWidth}px`,
         zIndex: 65,
       }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        isPointerDownInsideRef.current = true;
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        if (e.target !== inputRef.current) {
-          inputRef.current?.focus();
+        if (e.target !== textareaRef.current) {
+          textareaRef.current?.focus();
         }
       }}
     >
@@ -252,24 +331,37 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
           boxSizing: 'border-box',
         }}
       >
-        <input
-          ref={inputRef}
-          type="text"
+        <textarea
+          ref={textareaRef}
           className="canvas-inline-wysiwyg-input"
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+          }}
           placeholder={isNew ? 'Type text here…' : ''}
+          rows={lineCount}
           style={{
             width: '100%',
             height: '100%',
             fontSize: `${fontSizePx}px`,
+            lineHeight: `${lineHeightPx}px`,
             fontFamily: fontFamily || font?.family || 'Helvetica',
             fontWeight: isBold ? 700 : 400,
             fontStyle: font?.style === 'italic' ? 'italic' : 'normal',
             textDecoration: isUnderlined ? 'underline' : 'none',
             color: color || '#000000',
             textUnderlineOffset: '2px',
+            resize: 'none',
+            overflow: 'hidden',
+            whiteSpace: 'pre',
+            padding: '2px 3px',
+            margin: 0,
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            boxSizing: 'border-box',
           }}
           spellCheck={false}
           autoComplete="off"

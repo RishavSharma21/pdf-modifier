@@ -554,28 +554,31 @@ class PDFService:
                 else:
                     fname = "hebo" if is_bold else "helv"
 
-            # y passed is top of text box, offset by font_size * 0.85 for baseline
-            baseline_y = y + (font_size * 0.85)
-            page.insert_text(
-                fitz.Point(x, baseline_y),
-                text,
-                fontsize=font_size,
-                fontname=fname,
-                color=rgb
-            )
-
-            # Draw underline if requested
-            if underlined:
-                try:
-                    text_w = fitz.get_text_length(text, fontname=fname, fontsize=font_size)
-                except Exception:
-                    text_w = font_size * len(text) * 0.55
-                page.draw_line(
-                    fitz.Point(x, baseline_y + 1.2),
-                    fitz.Point(x + text_w, baseline_y + 1.2),
-                    color=rgb,
-                    width=0.75
+            # Support multi-line insertion with exact line height
+            lines = text.split("\n")
+            line_height = font_size * 1.3
+            for i, line_text in enumerate(lines):
+                line_baseline = y + (font_size * 0.85) + (i * line_height)
+                page.insert_text(
+                    fitz.Point(x, line_baseline),
+                    line_text,
+                    fontsize=font_size,
+                    fontname=fname,
+                    color=rgb
                 )
+
+                # Draw underline if requested
+                if underlined:
+                    try:
+                        text_w = fitz.get_text_length(line_text, fontname=fname, fontsize=font_size)
+                    except Exception:
+                        text_w = font_size * len(line_text) * 0.55
+                    page.draw_line(
+                        fitz.Point(x, line_baseline + 1.2),
+                        fitz.Point(x + text_w, line_baseline + 1.2),
+                        color=rgb,
+                        width=0.75
+                    )
 
             doc.save(temp_output_path)
             doc.close()

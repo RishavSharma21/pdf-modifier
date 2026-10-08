@@ -94,6 +94,40 @@ export interface ImageAdjustmentState {
   isModified: boolean;
 }
 
+// Helper to find exact word boundaries at click position on an overlay
+const getWordRangeAtRatio = (text: string, ratio: number): [number, number] => {
+  if (!text || text.length === 0) return [0, 0];
+  const clampedRatio = Math.max(0, Math.min(1, ratio));
+  const estCharIdx = Math.max(0, Math.min(text.length - 1, Math.round(clampedRatio * (text.length - 1))));
+
+  let idx = estCharIdx;
+  const isWordChar = (c: string) => /\S/.test(c);
+  if (!isWordChar(text[idx])) {
+    if (idx > 0 && isWordChar(text[idx - 1])) {
+      idx = idx - 1;
+    } else if (idx < text.length - 1 && isWordChar(text[idx + 1])) {
+      idx = idx + 1;
+    }
+  }
+
+  let start = idx;
+  while (start > 0 && isWordChar(text[start - 1])) {
+    start--;
+  }
+
+  let end = idx;
+  while (end < text.length && isWordChar(text[end])) {
+    end++;
+  }
+
+  // Trim trailing punctuation like comma, dot, colon, semicolon if attached to the word
+  if (end > start + 1 && /[.,;:!?)]$/.test(text.substring(start, end))) {
+    end--;
+  }
+
+  return [start, end];
+};
+
 // ---------------------------------------------------------------------------
 // Single PDF Page Component (Stacked continuously in the document)
 // ---------------------------------------------------------------------------
@@ -106,6 +140,7 @@ interface PdfPageItemProps {
   editableObjects: EditableText[];
   imageObjects: ImageObject[];
   activeObj: EditableText | null;
+  activeSelectionRange?: [number, number];
   activeText: string;
   activeColor: string;
   selectedImage: ImageObject | null;
@@ -114,7 +149,7 @@ interface PdfPageItemProps {
   activeMatchKey: string | null;
   allSearchMatchIds?: string[];
   searchQuery?: string;
-  onStartEdit: (obj: EditableText) => void;
+  onStartEdit: (obj: EditableText, selectionRange?: [number, number]) => void;
   onSelectImageWithSnapshot: (img: ImageObject, snapshotUrl: string | null) => void;
   onPointerDownImage: (
     e: React.PointerEvent,
@@ -155,6 +190,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   editableObjects,
   imageObjects,
   activeObj,
+  activeSelectionRange,
   activeText,
   activeColor,
   activeFontSize,
@@ -384,9 +420,6 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           }
           return;
         }
-        if (activeObj) {
-          onCommitEdit?.();
-        }
       }}
       onDoubleClick={(e) => {
         if (isMobile) return;
@@ -612,6 +645,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
             <InlineTextEditor
               key={obj.id}
               initialText={activeText}
+              initialSelectionRange={activeSelectionRange}
               font={obj.font}
               scale={scale}
               color={curColor}
@@ -657,7 +691,20 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
             onClick={(e) => {
               if (touchHandledRef.current) return;
               e.stopPropagation();
-              onStartEdit(obj);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const ratio = rect.width > 0 ? Math.max(0, Math.min(1, clickX / rect.width)) : 0;
+              const wordRange = getWordRangeAtRatio(obj.text, ratio);
+              onStartEdit(obj, wordRange);
+            }}
+            onDoubleClick={(e) => {
+              if (touchHandledRef.current) return;
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const ratio = rect.width > 0 ? Math.max(0, Math.min(1, clickX / rect.width)) : 0;
+              const wordRange = getWordRangeAtRatio(obj.text, ratio);
+              onStartEdit(obj, wordRange);
             }}
             id={`editable-${obj.id}`}
           >
@@ -822,6 +869,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   // Active in-place editing state
   const [activeObj, setActiveObj] = useState<EditableText | null>(null);
+  const [activeSelectionRange, setActiveSelectionRange] = useState<[number, number] | undefined>(undefined);
   const [activeText, setActiveText] = useState<string>('');
   const [activeColor, setActiveColor] = useState<string>('');
   const [activeFontSize, setActiveFontSize] = useState<number>(10);
@@ -1141,12 +1189,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   };
 
   // Start in-place edit
-  const handleStartEdit = (obj: EditableText) => {
+  const handleStartEdit = (obj: EditableText, selectionRange?: [number, number]) => {
     if (activeObj && activeObj.id !== obj.id) {
       const prevObj = activeObj;
       const prevText = currentEditingTextRef.current || activeText;
       commitObject(prevObj, prevText);
     }
+    setActiveSelectionRange(selectionRange);
     if (pendingInsert) {
       const currentText = (currentEditingTextRef.current || pendingInsert.text || '').trim();
       if (currentText) {
@@ -1206,6 +1255,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const textToCommit = overrideText !== undefined ? overrideText : (currentEditingTextRef.current || activeText);
 
     setActiveObj(null);
+    setActiveSelectionRange(undefined);
     currentEditingTextRef.current = '';
     onActiveEditChange?.(false);
 
@@ -1673,6 +1723,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               activeMatchKey={activeMatchKey || null}
               allSearchMatchIds={allSearchMatchIds}
               searchQuery={searchQuery}
+              activeSelectionRange={activeSelectionRange}
               onStartEdit={handleStartEdit}
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}
@@ -1687,6 +1738,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               onCommitEdit={handleCommit}
               onCancelEdit={() => {
                 setActiveObj(null);
+                setActiveSelectionRange(undefined);
                 onActiveEditChange?.(false);
               }}
             />

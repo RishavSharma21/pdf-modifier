@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { GripHorizontal } from 'lucide-react';
 import type { FontInfo } from '../types/pdf';
 
 export interface InlineTextEditorProps {
@@ -18,6 +19,7 @@ export interface InlineTextEditorProps {
   onLiveChange?: (text: string) => void;
   onCommit: (text: string) => void;
   onCancel: () => void;
+  onRelocate?: (newLeftPx: number, newTopPx: number) => void;
   isNew?: boolean;
 }
 
@@ -38,11 +40,13 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   onLiveChange,
   onCommit,
   onCancel,
+  onRelocate,
   isNew = false,
 }) => {
-  // Local state for 0ms instantaneous, zero-lag typing
   const [text, setText] = useState<string>(initialText);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const isCommittedRef = useRef<boolean>(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   // Keep parent live ref updated without re-rendering parent
@@ -50,13 +54,14 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     onLiveChange?.(text);
   }, [text, onLiveChange]);
 
-  // Auto-focus on mount and scroll smoothly above virtual keyboard on mobile
+  // Auto-focus on mount
   useEffect(() => {
     const el = inputRef.current;
     if (el) {
       el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+      if (isNew) {
+        el.setSelectionRange(0, 0);
+      }
       if (isMobile) {
         const timer = setTimeout(() => {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -64,14 +69,67 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [isMobile]);
+  }, [isMobile, isNew]);
 
-  // Exact matching font size. On mobile, clamp to at least 16px to prevent iOS Safari auto-zoom
+  // Click outside listener: commits on background click, ignores subbars / modals / other words
+  useEffect(() => {
+    const handleDocumentMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Inside editor
+      if (wrapperRef.current && wrapperRef.current.contains(target)) {
+        return;
+      }
+
+      // Formatting subbar, modals, popovers, or drag handle
+      if (
+        target.closest('#text-formatting-subbar') ||
+        target.closest('.pdf-editor-subbar') ||
+        target.closest('.color-picker-popover') ||
+        target.closest('.font-family-dropdown') ||
+        target.closest('.font-size-control') ||
+        target.closest('.canvas-inline-drag-handle')
+      ) {
+        return;
+      }
+
+      // If clicked on an editable text span, let that span's click handler handle the commit & switch
+      if (target.closest('.editable-span-overlay')) {
+        return;
+      }
+
+      // In Add Text mode with empty text: if clicking inside PDF page, let onNewTextBoxRequest relocate it
+      if (isNew && !text.trim() && target.closest('.pdf-page-wrapper')) {
+        return;
+      }
+
+      if (!isCommittedRef.current) {
+        isCommittedRef.current = true;
+        if (isNew) {
+          if (text.trim()) {
+            onCommit(text);
+          } else {
+            onCancel();
+          }
+        } else {
+          onCommit(text);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocumentMouseDown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentMouseDown);
+    };
+  }, [text, isNew, onCommit, onCancel]);
+
+  // Font size calculation
   const fontSizePx = isMobile
     ? Math.max(Math.round(fontSize * scale * 10) / 10, 16)
     : Math.max(Math.round(fontSize * scale * 10) / 10, 10);
 
-  // Strictly clamp width within PDF page bounds so text NEVER escapes the PDF
+  // Clamp width within PDF page bounds
   const availableMaxWidth = Math.max(pageWidthPx - leftPx - 8, 40);
   const approxCharWidth = fontSizePx * 0.58;
   const measuredWidth = Math.round((text.length + 1) * approxCharWidth);
@@ -88,8 +146,6 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     ? Math.max(initialHeight + 2, fontSizePx * 1.25)
     : Math.max(fontSizePx * 1.35, isMobile ? 32 : 20);
 
-  const isCommittedRef = useRef<boolean>(false);
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -104,34 +160,43 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     }
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    // Don't auto-commit if the user clicked inside the text formatting subbar
-    if (related && (related.closest('#text-formatting-subbar') || related.closest('.canvas-inline-text-wrapper'))) {
-      return;
-    }
-    setTimeout(() => {
-      if (!isCommittedRef.current) {
-        isCommittedRef.current = true;
-        if (text.trim()) {
-          onCommit(text);
-        } else if (isNew) {
-          onCancel();
-        } else {
-          onCommit(text);
-        }
-      }
-    }, 120);
-  };
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setText(val);
     onLiveChange?.(val);
   };
 
+  // Drag to move handle for new text insertion box
+  const handleDragPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!onRelocate) return;
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const initialLeft = leftPx;
+    const initialTop = topPx;
+
+    const handlePointerMove = (moveEvt: PointerEvent) => {
+      const deltaX = moveEvt.clientX - startClientX;
+      const deltaY = moveEvt.clientY - startClientY;
+      const newLeft = Math.max(0, initialLeft + deltaX);
+      const newTop = Math.max(0, initialTop + deltaY);
+      onRelocate(newLeft, newTop);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
   return (
     <div
+      ref={wrapperRef}
       className="canvas-inline-text-wrapper"
       style={{
         position: 'absolute',
@@ -144,18 +209,41 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       }}
       onClick={(e) => {
         e.stopPropagation();
-        inputRef.current?.focus();
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => {
-        e.stopPropagation();
-        inputRef.current?.focus();
-      }}
-      onTouchEnd={(e) => {
-        e.stopPropagation();
-        inputRef.current?.focus();
+        if (e.target !== inputRef.current) {
+          inputRef.current?.focus();
+        }
       }}
     >
+      {/* Draggable move bar for Add Text boxes */}
+      {isNew && onRelocate && (
+        <div
+          className="canvas-inline-drag-handle"
+          onPointerDown={handleDragPointerDown}
+          title="Drag to relocate text box"
+          style={{
+            position: 'absolute',
+            top: '-24px',
+            left: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 8px',
+            background: 'var(--accent, #2563eb)',
+            color: '#ffffff',
+            borderRadius: '4px 4px 0 0',
+            fontSize: '11px',
+            fontWeight: 500,
+            cursor: 'grab',
+            userSelect: 'none',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
+            zIndex: 70,
+          }}
+        >
+          <GripHorizontal size={13} />
+          <span>Move</span>
+        </div>
+      )}
+
       <div
         className="canvas-inline-input-frame"
         style={{
@@ -171,7 +259,6 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onBlur={handleBlur}
           placeholder={isNew ? 'Type text here…' : ''}
           style={{
             width: '100%',

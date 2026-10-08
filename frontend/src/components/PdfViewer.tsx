@@ -139,6 +139,7 @@ interface PdfPageItemProps {
   onNewTextBoxRequest?: (x: number, y: number, pageNum: number) => void;
   onCommitPendingText?: (overrideText?: string) => void;
   onCancelPendingText?: () => void;
+  onRelocatePendingText?: (newX: number, newY: number) => void;
   onCommitEdit?: (newText?: string) => void;
   onCancelEdit?: () => void;
   activeFontWeight?: 'normal' | 'bold';
@@ -175,6 +176,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   onNewTextBoxRequest,
   onCommitPendingText,
   onCancelPendingText,
+  onRelocatePendingText,
   onLiveTextChange,
   onCommitEdit,
   onCancelEdit,
@@ -654,15 +656,6 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
             }}
             onClick={(e) => {
               if (touchHandledRef.current) return;
-              if (!isMobile && isAddTextMode) {
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (rect && onNewTextBoxRequest) {
-                  const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
-                  const clickY = Math.round(((e.clientY - rect.top) / scale) * 10) / 10;
-                  onNewTextBoxRequest(clickX, clickY, pageNum);
-                }
-                return;
-              }
               e.stopPropagation();
               onStartEdit(obj);
             }}
@@ -714,6 +707,9 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           onLiveChange={onLiveTextChange}
           onCommit={(txt) => onCommitPendingText?.(txt)}
           onCancel={() => onCancelPendingText?.()}
+          onRelocate={(newLeftPx, newTopPx) => {
+            onRelocatePendingText?.(newLeftPx / scale, newTopPx / scale);
+          }}
           isNew={true}
         />
       )}
@@ -883,12 +879,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const handleNewTextBoxRequest = (x: number, y: number, pageNum: number) => {
     if (typeof window !== 'undefined' && window.innerWidth <= 768) return;
     if (activeObj) {
-      handleCommit(currentEditingTextRef.current);
+      commitObject(activeObj, currentEditingTextRef.current || activeText);
+      setActiveObj(null);
     }
     if (pendingInsert) {
-      handleCommitPendingText(currentEditingTextRef.current);
+      const currentText = (currentEditingTextRef.current || pendingInsert.text || '').trim();
+      if (currentText) {
+        handleCommitPendingText(currentText);
+      } else {
+        // Relocate box to newly clicked location without cancelling or exiting add text mode
+        setPendingInsert((prev) => (prev ? { ...prev, x, y, pageNum } : null));
+        currentEditingTextRef.current = '';
+        return;
+      }
     }
-    setActiveObj(null);
     setSelectedImage(null);
     setAdjustmentState(null);
 
@@ -1107,13 +1111,49 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const isColorModifiedRef = useRef<boolean>(false);
   const origUnderlinedRef = useRef<boolean>(false);
 
+  // Relocate pending inserted text box position
+  const handleRelocatePendingText = (newX: number, newY: number) => {
+    setPendingInsert((prev) => (prev ? { ...prev, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 } : null));
+  };
+
+  // Commit a specific object cleanly without state race conditions
+  const commitObject = async (obj: EditableText, newTextVal?: string) => {
+    const origText = obj.text;
+    const newText = newTextVal !== undefined ? newTextVal : origText;
+    const color = isColorModifiedRef.current ? activeColor : undefined;
+    const targetId = obj.id;
+    const bbox = obj.boundingBox || (obj as any).bounding_box;
+    const origin = obj.origin;
+    const pageNum = obj.pageNumber || currentPage;
+    const origSize = Math.round((obj.font?.size || 10) * 10) / 10;
+    const fontSize = activeFontSize !== origSize ? activeFontSize : undefined;
+    const origFont = obj.font?.family || 'Helvetica';
+    const newFontFamily = activeFontFamily !== origFont ? activeFontFamily : undefined;
+    const isUnderlineModified = isUnderlined !== origUnderlinedRef.current;
+
+    if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified) return;
+
+    try {
+      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily);
+    } catch {
+      showToast('Failed to save changes. Please try again.', 'error');
+    }
+  };
+
   // Start in-place edit
   const handleStartEdit = (obj: EditableText) => {
     if (activeObj && activeObj.id !== obj.id) {
-      handleCommit(currentEditingTextRef.current);
+      const prevObj = activeObj;
+      const prevText = currentEditingTextRef.current || activeText;
+      commitObject(prevObj, prevText);
     }
     if (pendingInsert) {
-      handleCommitPendingText(currentEditingTextRef.current);
+      const currentText = (currentEditingTextRef.current || pendingInsert.text || '').trim();
+      if (currentText) {
+        handleCommitPendingText(currentText);
+      } else {
+        setPendingInsert(null);
+      }
     }
     if (isAddTextMode && onExitAddTextMode) {
       onExitAddTextMode();
@@ -1162,30 +1202,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   const handleCommit = async (overrideText?: string) => {
     if (!activeObj) return;
-    const origText = activeObj.text;
-    const newText = overrideText !== undefined ? overrideText : (currentEditingTextRef.current || activeText);
-    const color = isColorModifiedRef.current ? activeColor : undefined;
-    const targetId = activeObj.id;
-    const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
-    const origin = activeObj.origin;
-    const pageNum = activeObj.pageNumber || currentPage;
-    const origSize = Math.round((activeObj.font?.size || 10) * 10) / 10;
-    const fontSize = activeFontSize !== origSize ? activeFontSize : undefined;
-    const origFont = activeObj.font?.family || 'Helvetica';
-    const newFontFamily = activeFontFamily !== origFont ? activeFontFamily : undefined;
-    const isUnderlineModified = isUnderlined !== origUnderlinedRef.current;
+    const objToCommit = activeObj;
+    const textToCommit = overrideText !== undefined ? overrideText : (currentEditingTextRef.current || activeText);
 
     setActiveObj(null);
     currentEditingTextRef.current = '';
     onActiveEditChange?.(false);
 
-    if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified) return;
-
-    try {
-      await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily);
-    } catch {
-      showToast('Failed to save changes. Please try again.', 'error');
-    }
+    await commitObject(objToCommit, textToCommit);
   };
 
 
@@ -1659,6 +1683,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               onNewTextBoxRequest={handleNewTextBoxRequest}
               onCommitPendingText={handleCommitPendingText}
               onCancelPendingText={handleCancelPendingText}
+              onRelocatePendingText={handleRelocatePendingText}
               onCommitEdit={handleCommit}
               onCancelEdit={() => {
                 setActiveObj(null);

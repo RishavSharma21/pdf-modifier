@@ -327,8 +327,8 @@ export function App() {
         return;
       }
 
-      // T — Toggle Add Text mode
-      if (!ctrl && !e.altKey && (e.key === 't' || e.key === 'T') && s.session) {
+      // T — Toggle Add Text mode (Desktop only)
+      if (!ctrl && !e.altKey && (e.key === 't' || e.key === 'T') && s.session && !isMobileScreen) {
         e.preventDefault();
         setIsAddTextMode((v) => !v);
         return;
@@ -1331,7 +1331,6 @@ export function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenPagesClick={session ? () => setIsMobilePagesOpen(true) : undefined}
-        onAddTextClick={session ? () => setIsAddTextMode((v) => !v) : undefined}
       />
 
       <div className={`main-workspace ${isEditingActive ? 'is-editing-mode' : ''}`} ref={canvasViewportRef}>
@@ -1422,10 +1421,11 @@ export function App() {
               onAdjustImage={handleAdjustImage}
               onRedactArea={handleRedactText}
               onActiveEditChange={setIsEditingActive}
-              isAddTextMode={isAddTextMode}
-              onToggleAddText={() => setIsAddTextMode((v) => !v)}
+              isAddTextMode={isMobileScreen ? false : isAddTextMode}
+              onToggleAddText={isMobileScreen ? undefined : () => setIsAddTextMode((v) => !v)}
               onInsertText={handleInsertText}
               onExitAddTextMode={() => setIsAddTextMode(false)}
+              isMobile={isMobileScreen}
             />
 
             {!isEditingActive && (
@@ -1451,8 +1451,8 @@ export function App() {
                 onRedo={handleRedo}
                 canRedo={redoCount > 0}
                 onOpenPagesSheet={() => setIsMobilePagesOpen(true)}
-                onToggleAddText={() => setIsAddTextMode((v) => !v)}
-                isAddTextMode={isAddTextMode}
+                onToggleAddText={isMobileScreen ? undefined : () => setIsAddTextMode((v) => !v)}
+                isAddTextMode={isMobileScreen ? false : isAddTextMode}
                 isMobile={isMobileScreen}
               />
             )}

@@ -179,6 +179,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   onCommitEdit,
   onCancelEdit,
 }) => {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -344,15 +345,15 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       style={{
         width: `${targetWidthPx}px`,
         height: `${targetHeightPx}px`,
-        cursor: isAddTextMode ? 'crosshair' : 'default',
+        cursor: !isMobile && isAddTextMode ? 'crosshair' : 'default',
       }}
       onTouchStart={(e) => {
-        if (isAddTextMode && e.touches.length === 1) {
+        if (!isMobile && isAddTextMode && e.touches.length === 1) {
           touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         }
       }}
       onTouchEnd={(e) => {
-        if (isAddTextMode && onNewTextBoxRequest && touchStartRef.current && e.changedTouches.length === 1) {
+        if (!isMobile && isAddTextMode && onNewTextBoxRequest && touchStartRef.current && e.changedTouches.length === 1) {
           const touch = e.changedTouches[0];
           const dist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
           if (dist < 15) {
@@ -372,7 +373,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       }}
       onClick={(e) => {
         if (touchHandledRef.current) return;
-        if (isAddTextMode && onNewTextBoxRequest) {
+        if (!isMobile && isAddTextMode && onNewTextBoxRequest) {
           const rect = containerRef.current?.getBoundingClientRect();
           if (rect) {
             const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
@@ -382,6 +383,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         }
       }}
       onDoubleClick={(e) => {
+        if (isMobile) return;
         const target = e.target as HTMLElement;
         if (
           target.closest('.editable-span-overlay') ||
@@ -648,7 +650,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
             }}
             onClick={(e) => {
               if (touchHandledRef.current) return;
-              if (isAddTextMode) {
+              if (!isMobile && isAddTextMode) {
                 const rect = containerRef.current?.getBoundingClientRect();
                 if (rect && onNewTextBoxRequest) {
                   const clickX = Math.round(((e.clientX - rect.left) / scale) * 10) / 10;
@@ -772,6 +774,7 @@ interface PdfViewerProps {
     underlined?: boolean
   ) => Promise<void>;
   onExitAddTextMode?: () => void;
+  isMobile?: boolean;
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
@@ -801,7 +804,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   onToggleAddText,
   onInsertText,
   onExitAddTextMode,
+  isMobile: externalIsMobile,
 }) => {
+  const isMobile = externalIsMobile ?? (typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
   const { showToast } = useToast();
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -859,26 +864,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     isSameAsPdf?: boolean;
   } | null>(null);
 
-  // When Add Text mode is toggled, auto-spawn on mobile and dismiss when turned off!
+  // Add Text is desktop-only. On mobile devices, always clear pendingInsert!
   useEffect(() => {
-    if (isAddTextMode) {
-      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-      if (isMobile && !pendingInsert) {
-        const pageMeta = pages?.find((p) => p.page === currentPage) || pages?.[0];
-        const pw = pageMeta?.width || 595.28;
-        const ph = pageMeta?.height || 841.89;
-        handleNewTextBoxRequest(Math.round(pw / 2 - 70), Math.round(ph / 3.5), currentPage);
-      }
-    } else {
+    const isMobileDevice = typeof window !== 'undefined' && window.innerWidth <= 768;
+    if (isMobileDevice || !isAddTextMode) {
       setPendingInsert(null);
       currentEditingTextRef.current = '';
       if (!activeObj) {
         onActiveEditChange?.(false);
       }
     }
-  }, [isAddTextMode]);
+  }, [isAddTextMode, activeObj, onActiveEditChange]);
 
   const handleNewTextBoxRequest = (x: number, y: number, pageNum: number) => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) return;
     setActiveObj(null);
     setSelectedImage(null);
     setAdjustmentState(null);
@@ -1474,8 +1473,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         />
       )}
 
-      {/* 3. Default Document Action Subbar */}
-      {!activeObj && !selectedImage && !pendingInsert && (
+      {/* 3. Default Document Action Subbar (Desktop only) */}
+      {!isMobile && !activeObj && !selectedImage && !pendingInsert && (
         <div
           className="pdf-editor-subbar pdf-default-subbar"
           id="pdf-default-subbar"

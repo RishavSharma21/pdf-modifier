@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical, Bug, Layers, Type } from 'lucide-react';
+import { Download, FilePlus, Loader2, Keyboard, Search, Sun, Moon, MoreVertical, Bug, Layers } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
@@ -14,7 +14,6 @@ interface HeaderProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   onOpenPagesClick?: () => void;
-  onAddTextClick?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,7 +28,6 @@ export const Header: React.FC<HeaderProps> = ({
   theme = 'dark',
   onToggleTheme,
   onOpenPagesClick,
-  onAddTextClick,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -190,19 +188,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 )}
 
-                {onAddTextClick && (
-                  <button
-                    className="mobile-dropdown-item"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onAddTextClick();
-                    }}
-                    id="btn-mobile-add-text"
-                  >
-                    <Type size={15} />
-                    <span>Add New Text</span>
-                  </button>
-                )}
+
 
                 {onFindReplaceClick && (
                   <button

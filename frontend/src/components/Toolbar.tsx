@@ -166,14 +166,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       </div>
 
-      {/* Add Text Mode Toggle Button */}
-      {onToggleAddText && (
+      {/* Add Text Mode Toggle Button (Desktop only) */}
+      {!isMobile && onToggleAddText && (
         <>
           <div className="toolbar-divider" />
           <button
             className={`toolbar-btn toolbar-btn-add-text ${isAddTextMode ? 'active' : ''}`}
             onClick={onToggleAddText}
-            id="btn-mobile-toolbar-add-text"
+            id="btn-desktop-toolbar-add-text"
             title="Add text to document"
             aria-label="Add text"
           >

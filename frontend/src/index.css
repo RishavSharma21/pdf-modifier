@@ -5108,7 +5108,13 @@ html.theme-transitioning .find-replace-card {
   .subbar-font-info,
   .subbar-font-tags,
   .subbar-divider,
-  .size-unit-pt {
+  .size-unit-pt,
+  .pdf-default-subbar,
+  .btn-subbar-add-text,
+  .toolbar-btn-add-text,
+  #btn-mobile-toolbar-add-text,
+  #btn-mobile-add-text,
+  #btn-subbar-add-text {
     display: none !important;
   }
 

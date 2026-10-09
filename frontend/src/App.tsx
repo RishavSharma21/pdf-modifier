@@ -755,7 +755,9 @@ export function App() {
             ...obj,
             text: newText,
             font: updatedFont,
-          };
+            underlined: Boolean(underlined),
+            _isOptimistic: true,
+          } as any;
         }
         return obj;
       })
@@ -1065,7 +1067,9 @@ export function App() {
       },
       rotation: 0,
       runs: [],
-    };
+      _isOptimistic: true,
+      underlined: Boolean(underlined),
+    } as any;
 
     setEditableObjects((prev) => sortEditableTexts([...prev, optimisticObj]));
     setEditCount((prev) => prev + 1);

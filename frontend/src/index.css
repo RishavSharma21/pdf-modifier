@@ -7154,6 +7154,103 @@ html.theme-transitioning .find-replace-card {
   color: #ffffff !important;
 }
 
+/* ==========================================================================
+   Zero-Latency Optimistic UI & Modern Micro-Aesthetics
+   ========================================================================== */
 
+/* 0ms Optimistic Text Patch */
+.optimistic-text-patch {
+  border-radius: 2px;
+  animation: optimisticFadeIn 0.1s ease-out;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
 
+@keyframes optimisticFadeIn {
+  from { opacity: 0.7; transform: scale(0.995); }
+  to { opacity: 1; transform: scale(1); }
+}
 
+/* Interactive Text Run Overlay Hover & Active States */
+.editable-span-overlay {
+  border-radius: 2px;
+  transition: background-color 0.12s ease, outline 0.12s ease, box-shadow 0.12s ease;
+  cursor: text;
+}
+
+.editable-span-overlay:hover {
+  outline: 1.5px dashed rgba(37, 99, 235, 0.55);
+  outline-offset: 1px;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+[data-theme="dark"] .editable-span-overlay:hover {
+  outline: 1.5px dashed rgba(96, 165, 250, 0.65);
+  outline-offset: 1px;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+/* Modern Ambient Canvas Viewport Grid Pattern */
+.canvas-viewport {
+  background-color: var(--canvas-bg) !important;
+  background-image: radial-gradient(circle, var(--border-med) 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+  background-position: 0 0 !important;
+  scroll-behavior: smooth;
+}
+
+/* State-of-the-Art Realistic Page Elevation */
+.pdf-page-wrapper {
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 10px 28px -4px rgba(0, 0, 0, 0.12), 0 24px 52px -12px rgba(0, 0, 0, 0.18) !important;
+  transition: box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #ffffff;
+}
+
+/* Floating Toolbar Glassmorphic Polish */
+.floating-toolbar {
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 16px 36px -4px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--border-strong) !important;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.floating-toolbar:hover {
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.12), 0 20px 42px -4px rgba(0, 0, 0, 0.26), 0 0 0 1px var(--accent-glow) !important;
+}
+
+.toolbar-btn {
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.toolbar-btn:active:not(:disabled) {
+  transform: scale(0.92) !important;
+}
+
+/* Status Indicator Dot Gentle Breathing */
+.status-indicator-dot {
+  position: relative;
+}
+
+.status-saved .status-indicator-dot {
+  background-color: var(--success);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.status-processing .status-indicator-dot {
+  background-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.3);
+  animation: pulseDot 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.6;
+  }
+}

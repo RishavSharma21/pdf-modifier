@@ -286,8 +286,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
 
         // Calculate native device pixel ratio for crystal-clear retina rendering
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-        // Guarantee at least 2.0x (144+ DPI) on standard desktop displays, and up to 3.0x on Retina
-        let outputScale = Math.min(Math.max(dpr, 2.0), 3.0);
+        // Crisp HiDPI rendering with optimal balance between sharpness and blazing rendering speed
+        let outputScale = Math.min(Math.max(dpr, 1.25), 2.0);
 
         // Hardware safety clamp for WebKit memory limit (4096px / 16MP)
         const MAX_DIM = 4096;
@@ -695,19 +695,54 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
           ? computeWordHighlights(obj.text, searchQuery, obj.font, bboxW, scale)
           : [];
 
+        const isOptimistic = Boolean((obj as any)._isOptimistic);
+        const typo = getFontTypography(obj.font || {});
+
         return (
-          <div
-            key={obj.id}
-            className={`editable-span-overlay ${isActiveLine ? 'search-match-active' : ''} ${isMatching ? 'search-match-other' : ''}`}
-            style={{
-              position: 'absolute',
-              left: `${bboxLeft}px`,
-              top: `${bboxTop}px`,
-              width: `${Math.max(bboxWidth, 24)}px`,
-              height: `${Math.max(bboxHeight, 16)}px`,
-              zIndex: 25,
-              pointerEvents: 'auto',
-            }}
+          <React.Fragment key={obj.id}>
+            {isOptimistic && (
+              <div
+                className="optimistic-text-patch"
+                style={{
+                  position: 'absolute',
+                  left: `${bboxLeft - 2}px`,
+                  top: `${bboxTop - 2}px`,
+                  minWidth: `${bboxWidth + 4}px`,
+                  height: `${Math.max(bboxHeight + 4, 16)}px`,
+                  backgroundColor: '#ffffff',
+                  zIndex: 24,
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft: '2px',
+                  paddingRight: '2px',
+                  boxSizing: 'border-box',
+                  overflow: 'visible',
+                  whiteSpace: 'pre',
+                  fontSize: `${(obj.font?.size || 12) * scale}px`,
+                  fontFamily: typo.family,
+                  fontWeight: typo.fontWeight,
+                  fontStyle: typo.fontStyle,
+                  textDecoration: (obj as any).underlined ? 'underline' : 'none',
+                  color: obj.font?.color
+                    ? `rgb(${Math.round(obj.font.color[0] * 255)}, ${Math.round(obj.font.color[1] * 255)}, ${Math.round(obj.font.color[2] * 255)})`
+                    : '#000000',
+                }}
+              >
+                {obj.text}
+              </div>
+            )}
+            <div
+              className={`editable-span-overlay ${isActiveLine ? 'search-match-active' : ''} ${isMatching ? 'search-match-other' : ''}`}
+              style={{
+                position: 'absolute',
+                left: `${bboxLeft}px`,
+                top: `${bboxTop}px`,
+                width: `${Math.max(bboxWidth, 24)}px`,
+                height: `${Math.max(bboxHeight, 16)}px`,
+                zIndex: 25,
+                pointerEvents: 'auto',
+              }}
             onClick={(e) => {
               if (touchHandledRef.current) return;
               e.stopPropagation();
@@ -743,8 +778,9 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
               );
             })}
           </div>
-        );
-      })}
+        </React.Fragment>
+      );
+    })}
 
       {/* Active New Text Insertion Box on Canvas */}
       {pendingInsert && pendingInsert.pageNum === pageNum && (

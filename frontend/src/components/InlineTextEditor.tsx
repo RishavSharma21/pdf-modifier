@@ -78,7 +78,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   isNew = false,
 }) => {
   const [text, setText] = useState<string>(initialText);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isCommittedRef = useRef<boolean>(false);
   const isPointerDownInsideRef = useRef<boolean>(false);
@@ -239,38 +239,50 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     [fontFamily, font?.family]
   );
 
-  // Exact pixel measurement using 2D canvas context
+  // Split into lines for multi-line support
+  const lines = useMemo(() => {
+    const raw = text || (isNew ? 'Type text here…' : '');
+    return raw.split('\n');
+  }, [text, isNew]);
+  const lineCount = Math.max(lines.length, 1);
+  const longestLine = useMemo(() => {
+    return lines.reduce((longest, curr) => (curr.length > longest.length ? curr : longest), '');
+  }, [lines]);
+
+  // Exact pixel measurement of the longest line using 2D canvas context
   const textWidth = useMemo(() => {
     try {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.font = `${isBold ? 'bold' : 'normal'} ${fontSizePx}px ${resolvedFamily}`;
-        return ctx.measureText(text || (isNew ? 'Type text here…' : '')).width;
+        return ctx.measureText(longestLine || (isNew ? 'Type text here…' : '')).width;
       }
     } catch {}
-    const len = (text || (isNew ? 'Type text here…' : '')).length;
+    const len = longestLine.length;
     return len * fontSizePx * 0.6;
-  }, [text, fontSizePx, isBold, resolvedFamily, isNew]);
+  }, [longestLine, fontSizePx, isBold, resolvedFamily, isNew]);
 
   // Dynamic width: expands when typing text, contracts when deleting text, scales with font size!
-  const paddingAllowance = 18;
+  const paddingAllowance = 22;
   const minWidth = isNew
-    ? 90
+    ? 96
     : (initialWidth ? Math.min(initialWidth + 4, availableMaxWidth) : 36);
   const contentWidth = Math.min(
     Math.max(Math.ceil(textWidth + paddingAllowance), minWidth),
     availableMaxWidth
   );
 
-  // Dynamic height: scales smoothly with font size changes
+  // Dynamic height: scales smoothly with font size and line count!
+  const lineHeightPx = Math.max(Math.round(fontSizePx * 1.35), 20);
+  const minHeight = isMobile ? 32 : (initialHeight ? Math.max(initialHeight + 2, 22) : 22);
   const contentHeight = Math.max(
-    Math.round(fontSizePx * 1.35),
-    isMobile ? 32 : (initialHeight ? Math.max(initialHeight + 2, 22) : 22)
+    lineCount * lineHeightPx + 4,
+    minHeight
   );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!isCommittedRef.current) {
         isCommittedRef.current = true;
@@ -283,7 +295,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setText(val);
     onLiveChange?.(val);
@@ -363,9 +375,9 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
           position: 'relative',
         }}
       >
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
+          rows={lineCount}
           className="canvas-inline-wysiwyg-input"
           value={text}
           onChange={handleChange}
@@ -378,12 +390,21 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
             width: '100%',
             height: '100%',
             fontSize: `${fontSizePx}px`,
+            lineHeight: `${lineHeightPx}px`,
             fontFamily: resolvedFamily,
             fontWeight: isBold ? 700 : 400,
             fontStyle: font?.style === 'italic' ? 'italic' : 'normal',
             textDecoration: isUnderlined ? 'underline' : 'none',
             color: color || '#000000',
             textUnderlineOffset: '2px',
+            resize: 'none',
+            overflow: 'hidden',
+            whiteSpace: 'pre',
+            background: 'transparent',
+            outline: 'none',
+            border: 'none',
+            padding: '2px 4px',
+            boxSizing: 'border-box',
           }}
           spellCheck={false}
           autoComplete="off"

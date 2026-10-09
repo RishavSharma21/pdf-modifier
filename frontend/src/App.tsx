@@ -453,44 +453,41 @@ export function App() {
     };
   }, [session?.sessionId, currentPage]);
 
-  // Background pre-fetch all other document pages so continuous scrolling is instant
+  // Background pre-fetch pages gently during idle periods without saturating backend CPU
   useEffect(() => {
     if (!session || !session.pages || session.pages.length <= 1) return;
     let isCancelled = false;
 
     const prefetch = async () => {
-      const remainingPages = session.pages.filter(
-        (p) => p.page !== currentPage && !pageAnalysisCache.current.has(p.page)
-      );
+      // Prioritize adjacent pages first: currentPage + 1, currentPage - 1, then the rest
+      const remainingPages = session.pages
+        .filter((p) => p.page !== currentPage && !pageAnalysisCache.current.has(p.page))
+        .sort((a, b) => Math.abs(a.page - currentPage) - Math.abs(b.page - currentPage));
 
-      // Fetch in concurrent batches of 3 to avoid backend bottleneck while being 3x faster
-      for (let i = 0; i < remainingPages.length; i += 3) {
+      for (const p of remainingPages) {
         if (isCancelled) break;
-        const batch = remainingPages.slice(i, i + 3);
-        const results = await Promise.allSettled(
-          batch.map((p) =>
-            analyzePage(session.sessionId, p.page).then((res) => ({ page: p.page, res }))
-          )
-        );
-        if (isCancelled) break;
-
-        for (const item of results) {
-          if (item.status === 'fulfilled' && item.value.res?.textObjects) {
-            const { page, res } = item.value;
-            pageAnalysisCache.current.set(page, {
+        try {
+          const res = await analyzePage(session.sessionId, p.page);
+          if (isCancelled) break;
+          if (res?.textObjects) {
+            pageAnalysisCache.current.set(p.page, {
               textObjects: res.textObjects,
               imageObjects: res.imageObjects || [],
             });
             setEditableObjects((prev) => {
-              const others = prev.filter((o) => (o.pageNumber || 1) !== page);
+              const others = prev.filter((o) => (o.pageNumber || 1) !== p.page);
               return sortEditableTexts([...others, ...res.textObjects]);
             });
           }
+        } catch {
+          // Silent — will load on demand when user navigates
         }
+        // Polite pause between pages so the backend stays 100% responsive for user edits
+        await new Promise((r) => setTimeout(r, 800));
       }
     };
 
-    const t = setTimeout(prefetch, 200);
+    const t = setTimeout(prefetch, 1200);
     return () => {
       isCancelled = true;
       clearTimeout(t);

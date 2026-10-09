@@ -558,11 +558,15 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                     or any(emb_clean.endswith(k) for k in ['-bd', '-b', '600', '700', '800', '-bold'])
                                 )
                                 if f_bold:
-                                    if is_emb_bold: score += 50
-                                    else: score -= 20
+                                    if is_emb_bold:
+                                        score += 50
+                                    else:
+                                        return -1  # User wants bold: never reuse regular non-bold embedded font
                                 else:
-                                    if not is_emb_bold: score += 50
-                                    else: score -= 40
+                                    if not is_emb_bold:
+                                        score += 50
+                                    else:
+                                        return -1  # User wants normal: never reuse bold embedded font
                                 
                                 is_emb_italic = ('italic' in emb_clean or 'oblique' in emb_clean)
                                 if f_italic:

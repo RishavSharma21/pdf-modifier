@@ -275,21 +275,11 @@ class PDFService:
         res_dict = result.to_dict()
         if result.success:
             try:
-                # Fast re-analysis: directly extract text and images without redundant pikepdf font inspector pass
+                # High-speed re-analysis: directly extract updated text objects without redundant image extraction
                 analyzer = PDFAnalyzer(current_path)
                 page_idx = page_number - 1
                 page_objects = analyzer.analyze_page(page_idx, fast=True)
-                page_images = analyzer.extract_images(page_idx)
                 res_dict["textObjects"] = [obj.to_dict() for obj in page_objects]
-                res_dict["imageObjects"] = page_images
-            except Exception:
-                pass
-
-            try:
-                if os.path.getsize(current_path) < 4 * 1024 * 1024:
-                    import base64
-                    with open(current_path, "rb") as f:
-                        res_dict["pdfBase64"] = base64.b64encode(f.read()).decode("ascii")
             except Exception:
                 pass
 
@@ -601,31 +591,18 @@ class PDFService:
             shutil.move(temp_output_path, current_path)
 
             text_objects = []
-            image_objects = []
             try:
                 analyzer = PDFAnalyzer(current_path)
                 page_idx = page_number - 1
                 page_objects = analyzer.analyze_page(page_idx, fast=True)
-                image_objects = analyzer.extract_images(page_idx)
                 text_objects = [obj.to_dict() for obj in page_objects]
             except Exception:
                 pass
 
-            res_dict = {
+            return {
                 "success": True,
                 "textObjects": text_objects,
-                "imageObjects": image_objects,
             }
-
-            try:
-                if os.path.getsize(current_path) < 4 * 1024 * 1024:
-                    import base64
-                    with open(current_path, "rb") as f:
-                        res_dict["pdfBase64"] = base64.b64encode(f.read()).decode("ascii")
-            except Exception:
-                pass
-
-            return res_dict
         else:
             doc.close()
             return {"success": False, "error": f"Invalid page number: {page_number}"}

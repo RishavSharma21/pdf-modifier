@@ -705,17 +705,17 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
                 className="optimistic-text-patch"
                 style={{
                   position: 'absolute',
-                  left: `${bboxLeft - 2}px`,
-                  top: `${bboxTop - 2}px`,
-                  minWidth: `${bboxWidth + 4}px`,
-                  height: `${Math.max(bboxHeight + 4, 16)}px`,
+                  left: `${bboxLeft}px`,
+                  top: `${bboxTop}px`,
+                  minWidth: `${bboxWidth}px`,
+                  height: `${bboxHeight}px`,
+                  lineHeight: `${bboxHeight}px`,
                   backgroundColor: '#ffffff',
                   zIndex: 24,
                   pointerEvents: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: '2px',
-                  paddingRight: '2px',
+                  display: 'block',
+                  padding: 0,
+                  margin: 0,
                   boxSizing: 'border-box',
                   overflow: 'visible',
                   whiteSpace: 'pre',
@@ -1066,6 +1066,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       return;
     }
     const { x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
+    // Align inserted PDF text with exact text rendered inside the Add Text input box
+    const textInsetX = 6;
+    const textInsetY = 4;
+    const actualX = Math.round(((x * scale + textInsetX) / scale) * 10) / 10;
+    const actualY = Math.round(((y * scale + textInsetY) / scale) * 10) / 10;
     setPendingInsert(null);
     currentEditingTextRef.current = '';
     onActiveEditChange?.(false);
@@ -1074,7 +1079,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
     try {
       if (onInsertText) {
-        await onInsertText(textToInsert, x, y, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
+        await onInsertText(textToInsert, actualX, actualY, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
       }
     } catch {
       showToast('Failed to insert text', 'error');
@@ -1272,21 +1277,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setActiveFontSize(Math.round((obj.font?.size || 10) * 10) / 10);
     setActiveFontFamily(obj.font?.family || 'Helvetica');
     const hasUnderscoreLine =
-      Boolean(obj.text && /__/.test(obj.text)) ||
-      obj.font?.style === 'underline' ||
-      /^(signature|name|date|title|by):\s*/i.test(obj.text);
+      Boolean((obj as any).underlined) ||
+      obj.font?.style === 'underline';
     setIsUnderlined(hasUnderscoreLine);
     origUnderlinedRef.current = hasUnderscoreLine;
 
-    // If this is a form fill line with underscores, strip the placeholder underscores
-    // so the user can type their value cleanly directly onto the line without cursor getting stuck in underscores
-    let initialText = obj.text;
-    if (obj.text && /__/.test(obj.text)) {
-      initialText = obj.text.replace(/_+/g, '').trimEnd();
-      if (initialText.endsWith(':')) {
-        initialText += ' ';
-      }
-    }
+    // Preserve exact original text faithfully without destructive alterations
+    const initialText = obj.text;
     setActiveText(initialText);
     currentEditingTextRef.current = initialText;
     const initialWeight = obj.font?.weight === 'bold' ? 'bold' : 'normal';

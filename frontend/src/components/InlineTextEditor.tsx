@@ -263,23 +263,27 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     return len * fontSizePx * 0.6;
   }, [longestLine, fontSizePx, isBold, resolvedFamily, isNew]);
 
-  // Dynamic width: expands when typing text, contracts when deleting text, scales with font size!
-  const paddingAllowance = 22;
+  // Dynamic width & height calculations
+  // For Add Text (isNew): comfortable typing padding with auto-expansion
+  // For in-place editing (!isNew): zero-displacement exact character-level overlay
+  const textInsetX = isNew ? 6 : 1;
+  const textInsetY = isNew ? 4 : 0;
+  const paddingAllowance = isNew ? 24 : 4;
   const minWidth = isNew
     ? 96
-    : (initialWidth ? Math.min(initialWidth + 4, availableMaxWidth) : 36);
+    : (initialWidth ? Math.min(initialWidth, availableMaxWidth) : 24);
   const contentWidth = Math.min(
     Math.max(Math.ceil(textWidth + paddingAllowance), minWidth),
     availableMaxWidth
   );
 
-  // Dynamic height: scales smoothly with font size and line count!
-  const lineHeightPx = Math.max(Math.round(fontSizePx * 1.35), 20);
-  const minHeight = isMobile ? 32 : (initialHeight ? Math.max(initialHeight + 2, 22) : 22);
-  const contentHeight = Math.max(
-    lineCount * lineHeightPx + 4,
-    minHeight
-  );
+  const lineHeightPx = isNew
+    ? Math.max(Math.round(fontSizePx * 1.25), 18)
+    : (initialHeight ? Math.round(initialHeight) : Math.round(fontSizePx * 1.15));
+
+  const contentHeight = isNew
+    ? (lineCount * lineHeightPx + textInsetY * 2)
+    : (initialHeight ? Math.max(initialHeight, 14) : Math.max(fontSizePx * 1.15, 14));
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -365,9 +369,9 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         </div>
       )}
 
-      {/* Crisp White Editing Box Frame with Elevation */}
+      {/* Crisp Editing Box Frame */}
       <div
-        className="canvas-inline-input-frame"
+        className={`canvas-inline-input-frame ${isNew ? 'is-new-box' : 'is-inline-edit'}`}
         style={{
           width: '100%',
           height: '100%',
@@ -377,7 +381,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       >
         <textarea
           ref={inputRef}
-          rows={lineCount}
+          rows={isNew ? lineCount : 1}
           className="canvas-inline-wysiwyg-input"
           value={text}
           onChange={handleChange}
@@ -403,8 +407,10 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
             background: 'transparent',
             outline: 'none',
             border: 'none',
-            padding: '2px 4px',
+            padding: `${textInsetY}px ${textInsetX}px`,
+            margin: 0,
             boxSizing: 'border-box',
+            display: 'block',
           }}
           spellCheck={false}
           autoComplete="off"

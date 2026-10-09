@@ -7028,16 +7028,26 @@ html.theme-transitioning .find-replace-card {
 }
 
 .canvas-inline-input-frame {
-  display: flex;
-  align-items: center;
-  background: #ffffff !important;
-  border: 1.5px solid #2563eb !important;
-  border-radius: 4px;
-  box-shadow: 0 0 0 2.5px rgba(37, 99, 235, 0.22), 0 4px 14px rgba(0, 0, 0, 0.12) !important;
-  padding: 0 4px;
+  display: block;
+  background: #ffffff;
   box-sizing: border-box;
   overflow: hidden;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.canvas-inline-input-frame.is-inline-edit {
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: 0 0 0 1.5px #2563eb, 0 2px 8px rgba(37, 99, 235, 0.22) !important;
+  border-radius: 2px !important;
+  background: #ffffff !important;
+}
+
+.canvas-inline-input-frame.is-new-box {
+  border: 1.5px solid #2563eb !important;
+  border-radius: 4px !important;
+  padding: 0 !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22), 0 4px 14px rgba(0, 0, 0, 0.12) !important;
 }
 
 /* Professional Add Text Floating Drag Header & Actions */

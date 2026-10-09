@@ -7168,18 +7168,13 @@ html.theme-transitioning .find-replace-card {
    Zero-Latency Optimistic UI & Modern Micro-Aesthetics
    ========================================================================== */
 
-/* 0ms Optimistic Text Patch */
+/* 0ms Persistent Optimistic Text Patch (Seamless white mask matching PDF paper) */
 .optimistic-text-patch {
-  border-radius: 2px;
-  animation: optimisticFadeIn 0.1s ease-out;
+  border-radius: 1px;
   user-select: none;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
-}
-
-@keyframes optimisticFadeIn {
-  from { opacity: 0.7; transform: scale(0.995); }
-  to { opacity: 1; transform: scale(1); }
+  box-shadow: none !important;
+  background-color: #ffffff !important;
 }
 
 /* Interactive Text Run Overlay Hover & Active States */

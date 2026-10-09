@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -94,6 +94,25 @@ export interface ImageAdjustmentState {
   isModified: boolean;
 }
 
+export interface OptimisticTextPatch {
+  id: string;
+  targetId?: string;
+  pageNum: number;
+  text: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  font?: {
+    family?: string;
+    size?: number;
+    weight?: string;
+    color?: [number, number, number];
+    style?: string;
+  };
+  underlined?: boolean;
+  baseDoc: any;
+  createdAt: number;
+}
+
+
 // Helper to find exact word boundaries at click position on an overlay
 const getWordRangeAtRatio = (text: string, ratio: number): [number, number] => {
   if (!text || text.length === 0) return [0, 0];
@@ -179,6 +198,8 @@ interface PdfPageItemProps {
   onCancelEdit?: () => void;
   activeFontWeight?: 'normal' | 'bold';
   onLiveTextChange?: (text: string) => void;
+  optimisticPatches?: OptimisticTextPatch[];
+  onPageCanvasPainted?: (pageNum: number, paintedDoc: any) => void;
 }
 
 const PdfPageItem: React.FC<PdfPageItemProps> = ({
@@ -216,6 +237,8 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
   onLiveTextChange,
   onCommitEdit,
   onCancelEdit,
+  optimisticPatches,
+  onPageCanvasPainted,
 }) => {
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -352,6 +375,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         renderedScaleRef.current = scale;
         renderedRotationRef.current = pageRotation;
         setIsRendered(true);
+        onPageCanvasPainted?.(pageNum, pdfDoc);
       } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
           console.error(`Error rendering page ${pageNum}:`, err);
@@ -782,6 +806,61 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
       );
     })}
 
+      {/* 0ms Persistent Optimistic Text Patches - Masks canvas until new PDF has painted */}
+      {(optimisticPatches || [])
+        .filter((p) => p.pageNum === pageNum)
+        .map((patch) => {
+          const left = patch.bbox.x * scale;
+          const top = patch.bbox.y * scale;
+          const width = Math.max(patch.bbox.width * scale, 1);
+          const height = Math.max(patch.bbox.height * scale, 1);
+          const fontSizePx = (patch.font?.size || 12) * scale;
+          const typo = getFontTypography(patch.font || {});
+          const rgb = patch.font?.color;
+          const colorStr = rgb
+            ? `rgb(${Math.round(rgb[0] * 255)}, ${Math.round(rgb[1] * 255)}, ${Math.round(rgb[2] * 255)})`
+            : '#000000';
+          const lines = patch.text.split('\n');
+          const lineCount = Math.max(lines.length, 1);
+          const computedLineHeight = lineCount > 1 ? `${height / lineCount}px` : `${height}px`;
+          const estCharWidth = fontSizePx * 0.58;
+          const longestLineLen = Math.max(...lines.map((l) => l.length), 0);
+          const estTextWidth = longestLineLen * estCharWidth;
+          const coverWidth = Math.max(width, estTextWidth);
+
+          return (
+            <div
+              key={patch.id}
+              className="optimistic-text-patch"
+              style={{
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                minWidth: `${coverWidth}px`,
+                height: `${height}px`,
+                lineHeight: computedLineHeight,
+                backgroundColor: '#ffffff',
+                zIndex: 26,
+                pointerEvents: 'none',
+                display: 'block',
+                padding: 0,
+                margin: 0,
+                boxSizing: 'border-box',
+                overflow: 'visible',
+                whiteSpace: 'pre',
+                fontSize: `${fontSizePx}px`,
+                fontFamily: typo.family,
+                fontWeight: typo.fontWeight,
+                fontStyle: typo.fontStyle,
+                textDecoration: patch.underlined ? 'underline' : 'none',
+                color: colorStr,
+              }}
+            >
+              {patch.text}
+            </div>
+          );
+        })}
+
       {/* Active New Text Insertion Box on Canvas */}
       {pendingInsert && pendingInsert.pageNum === pageNum && (
         <InlineTextEditor
@@ -940,6 +1019,40 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
   const [dismissedScannedPages, setDismissedScannedPages] = useState<Set<number>>(new Set());
   const [isUnderlined, setIsUnderlined] = useState<boolean>(false);
+  const [optimisticPatches, setOptimisticPatches] = useState<Record<string, OptimisticTextPatch>>({});
+
+  const handlePageCanvasPainted = useCallback((paintedPageNum: number, paintedDoc: any) => {
+    setOptimisticPatches((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [id, patch] of Object.entries(prev)) {
+        if (patch.pageNum === paintedPageNum && patch.baseDoc !== paintedDoc) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // Cleanup stale optimistic patches after 15s timeout
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setOptimisticPatches((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const [id, patch] of Object.entries(prev)) {
+          if (now - patch.createdAt > 15000) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Helper to extract clean human-readable font family name
   const cleanPdfFontFamily = (raw?: string): string => {
@@ -1077,11 +1190,55 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     if (isAddTextMode) {
       onExitAddTextMode?.();
     }
+
+    const hexToRgb = (hex: string): [number, number, number] => {
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.substring(0, 2), 16) / 255;
+      const g = parseInt(clean.substring(2, 4), 16) / 255;
+      const b = parseInt(clean.substring(4, 6), 16) / 255;
+      return [isNaN(r) ? 0 : r, isNaN(g) ? 0 : g, isNaN(b) ? 0 : b];
+    };
+
+    const patchId = `insert_${Date.now()}`;
+    const lines = textToInsert.split('\n');
+    const longestLine = Math.max(...lines.map((l) => l.length), 0);
+    const patchFont = {
+      family: fontFamily,
+      size: fontSize,
+      weight: fontWeight,
+      color: color ? hexToRgb(color) : ([0, 0, 0] as [number, number, number]),
+      style: 'normal' as const,
+    };
+
+    setOptimisticPatches((prev) => ({
+      ...prev,
+      [patchId]: {
+        id: patchId,
+        pageNum,
+        text: textToInsert,
+        bbox: {
+          x: actualX,
+          y: actualY,
+          width: Math.max(longestLine * fontSize * 0.58, 20),
+          height: lines.length * fontSize * 1.35,
+        },
+        font: patchFont,
+        underlined: Boolean(insertUnderlined),
+        baseDoc: pdfDoc,
+        createdAt: Date.now(),
+      },
+    }));
+
     try {
       if (onInsertText) {
         await onInsertText(textToInsert, actualX, actualY, pageNum, fontSize, fontWeight, fontFamily, color, insertUnderlined);
       }
     } catch {
+      setOptimisticPatches((prev) => {
+        const next = { ...prev };
+        delete next[patchId];
+        return next;
+      });
       showToast('Failed to insert text', 'error');
     }
   };
@@ -1246,9 +1403,46 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
     if (origText === newText && !color && fontSize === undefined && !newFontFamily && !isUnderlineModified && !isWeightModified) return;
 
+    const hexToRgb = (hex: string): [number, number, number] => {
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.substring(0, 2), 16) / 255;
+      const g = parseInt(clean.substring(2, 4), 16) / 255;
+      const b = parseInt(clean.substring(4, 6), 16) / 255;
+      return [isNaN(r) ? 0 : r, isNaN(g) ? 0 : g, isNaN(b) ? 0 : b];
+    };
+
+    const patchId = `patch_${targetId}_${Date.now()}`;
+    const patchFont = {
+      family: newFontFamily || obj.font?.family,
+      size: fontSize !== undefined ? fontSize : obj.font?.size,
+      weight: newFontWeight || (obj.font?.weight === 'bold' ? 'bold' : 'normal'),
+      color: color ? hexToRgb(color) : obj.font?.color,
+      style: obj.font?.style,
+    };
+
+    setOptimisticPatches((prev) => ({
+      ...prev,
+      [patchId]: {
+        id: patchId,
+        targetId,
+        pageNum,
+        text: newText,
+        bbox: { ...bbox },
+        font: patchFont,
+        underlined: Boolean(isUnderlined),
+        baseDoc: pdfDoc,
+        createdAt: Date.now(),
+      },
+    }));
+
     try {
       await onCommitEdit(origText, newText, color, targetId, bbox, origin, pageNum, isUnderlined, fontSize, newFontFamily, newFontWeight);
     } catch {
+      setOptimisticPatches((prev) => {
+        const next = { ...prev };
+        delete next[patchId];
+        return next;
+      });
       showToast('Failed to save changes. Please try again.', 'error');
     }
   };
@@ -1334,26 +1528,65 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     setActiveObj(null);
     onActiveEditChange?.(false);
 
+    const patchId = `delete_${targetId}_${Date.now()}`;
+    setOptimisticPatches((prev) => ({
+      ...prev,
+      [patchId]: {
+        id: patchId,
+        targetId,
+        pageNum,
+        text: '',
+        bbox: { ...bbox },
+        baseDoc: pdfDoc,
+        createdAt: Date.now(),
+      },
+    }));
+
     try {
       await onCommitEdit(origText, '', undefined, targetId, bbox, origin, pageNum);
     } catch {
+      setOptimisticPatches((prev) => {
+        const next = { ...prev };
+        delete next[patchId];
+        return next;
+      });
       showToast('Failed to delete line', 'error');
     }
   };
 
   const handleRedactLine = async () => {
     if (!activeObj) return;
+    const targetId = activeObj.id;
     const bbox = activeObj.boundingBox || (activeObj as any).bounding_box;
     const pageNum = activeObj.pageNumber || currentPage;
 
     setActiveObj(null);
     onActiveEditChange?.(false);
 
+    const patchId = `redact_${targetId}_${Date.now()}`;
+    setOptimisticPatches((prev) => ({
+      ...prev,
+      [patchId]: {
+        id: patchId,
+        targetId,
+        pageNum,
+        text: '',
+        bbox: { ...bbox },
+        baseDoc: pdfDoc,
+        createdAt: Date.now(),
+      },
+    }));
+
     try {
       if (onRedactArea) {
         await onRedactArea(bbox, pageNum);
       }
     } catch {
+      setOptimisticPatches((prev) => {
+        const next = { ...prev };
+        delete next[patchId];
+        return next;
+      });
       showToast('Failed to redact text', 'error');
     }
   };
@@ -1783,6 +2016,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               allSearchMatchIds={allSearchMatchIds}
               searchQuery={searchQuery}
               activeSelectionRange={activeSelectionRange}
+              optimisticPatches={Object.values(optimisticPatches)}
+              onPageCanvasPainted={handlePageCanvasPainted}
               onStartEdit={handleStartEdit}
               onSelectImageWithSnapshot={handleSelectImageWithSnapshot}
               onPointerDownImage={handlePointerDownImage}

@@ -17,6 +17,7 @@ export interface InlineTextEditorProps {
   pageWidthPx: number;
   initialWidth?: number;
   initialHeight?: number;
+  origin?: [number, number];
   onLiveChange?: (text: string) => void;
   onCommit: (text: string) => void;
   onCancel: () => void;
@@ -71,6 +72,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   pageWidthPx,
   initialWidth,
   initialHeight,
+  origin,
   onLiveChange,
   onCommit,
   onCancel,
@@ -85,6 +87,17 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
   const isDraggingRef = useRef<boolean>(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
+  const [coords, setCoords] = useState<{ x: number; y: number }>({
+    x: Math.round(leftPx / scale),
+    y: Math.round(topPx / scale),
+  });
+  const finalPosRef = useRef<{ left: number; top: number }>({ left: leftPx, top: topPx });
+
+  useEffect(() => {
+    finalPosRef.current = { left: leftPx, top: topPx };
+    setCoords({ x: Math.round(leftPx / scale), y: Math.round(topPx / scale) });
+  }, [leftPx, topPx, scale]);
+
   // Sync state if initialText changes
   useEffect(() => {
     setText(initialText);
@@ -95,11 +108,15 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     onLiveChange?.(text);
   }, [text, onLiveChange]);
 
-  // Auto-focus on mount and auto-select clicked word if provided
+  // Auto-focus on mount with preventScroll to eliminate laggy viewport jumps
   useEffect(() => {
     const el = inputRef.current;
     if (el) {
-      el.focus();
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        el.focus();
+      }
       if (initialSelectionRange && initialSelectionRange[0] <= initialSelectionRange[1]) {
         el.setSelectionRange(initialSelectionRange[0], initialSelectionRange[1]);
         const timer = setTimeout(() => {
@@ -111,14 +128,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       } else if (isNew) {
         el.setSelectionRange(0, 0);
       }
-      if (isMobile) {
-        const timer = setTimeout(() => {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
-        return () => clearTimeout(timer);
-      }
     }
-  }, [isMobile, isNew, initialSelectionRange]);
+  }, [isNew, initialSelectionRange]);
 
   // Safe outside click listener: only commits when pointerdown AND pointerup happen outside
   useEffect(() => {
@@ -157,7 +168,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
         target.closest('.pro-font-popover') ||
         target.closest('.font-family-dropdown') ||
         target.closest('.font-size-control') ||
-        target.closest('.canvas-inline-drag-header')
+        target.closest('.canvas-inline-drag-header') ||
+        target.closest('.canvas-inline-side-grab')
       ) {
         return;
       }
@@ -194,7 +206,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
     };
   }, [text, isNew, onCommit, onCancel]);
 
-  // Smooth drag to reposition text for Add Text mode
+  // Buttery-smooth 60fps drag to reposition text without triggering heavy PDF re-renders during mouse move
   const handleDragStart = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -203,8 +215,8 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const initialLeft = leftPx;
-    const initialTop = topPx;
+    const initialLeft = finalPosRef.current.left;
+    const initialTop = finalPosRef.current.top;
 
     const onPointerMove = (ev: PointerEvent) => {
       if (!isDraggingRef.current) return;
@@ -212,7 +224,12 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       const deltaY = ev.clientY - startY;
       const nextLeft = Math.max(0, Math.min(initialLeft + deltaX, pageWidthPx - 50));
       const nextTop = Math.max(0, initialTop + deltaY);
-      onRelocate?.(nextLeft, nextTop);
+      finalPosRef.current = { left: nextLeft, top: nextTop };
+      if (wrapperRef.current) {
+        wrapperRef.current.style.left = `${nextLeft}px`;
+        wrapperRef.current.style.top = `${nextTop}px`;
+      }
+      setCoords({ x: Math.round(nextLeft / scale), y: Math.round(nextTop / scale) });
     };
 
     const onPointerUp = () => {
@@ -222,6 +239,7 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       }, 60);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      onRelocate?.(finalPosRef.current.left, finalPosRef.current.top);
     };
 
     window.addEventListener('pointermove', onPointerMove);
@@ -265,9 +283,29 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
 
   // Dynamic width & height calculations
   // For Add Text (isNew): comfortable typing padding with auto-expansion
-  // For in-place editing (!isNew): zero-displacement exact character-level overlay
+  // For in-place editing (!isNew): zero-displacement exact baseline alignment
   const textInsetX = isNew ? 6 : 1;
-  const textInsetY = isNew ? 4 : 0;
+
+  // Exact baseline preservation:
+  // In PDF typography, origin[1] is the exact baseline Y.
+  // Distance from bbox top to baseline:
+  const baselineOffsetPx = useMemo(() => {
+    if (origin && origin[1] !== undefined) {
+      return (origin[1] * scale) - topPx;
+    }
+    return initialHeight ? (initialHeight * 0.80) : (fontSizePx * 0.82);
+  }, [origin, scale, topPx, initialHeight, fontSizePx]);
+
+  // For in-place editing (!isNew):
+  // Line-height is fontSizePx (1.0em em-box, zero half-leading!).
+  // Font ascent in web typography is ~0.78 * fontSizePx.
+  // To place the textarea glyphs at exactly baselineOffsetPx:
+  // paddingTop + 0.78 * fontSizePx = baselineOffsetPx
+  // => textInsetY = Math.max(0, baselineOffsetPx - (fontSizePx * 0.78))
+  const textInsetY = isNew
+    ? 4
+    : Math.max(0, Math.round((baselineOffsetPx - (fontSizePx * 0.78)) * 10) / 10);
+
   const paddingAllowance = isNew ? 24 : 4;
   const minWidth = isNew
     ? 96
@@ -279,13 +317,33 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
 
   const lineHeightPx = isNew
     ? Math.max(Math.round(fontSizePx * 1.25), 18)
-    : (initialHeight ? Math.round(initialHeight) : Math.round(fontSizePx * 1.15));
+    : Math.round(fontSizePx); // 1.0em line height eliminates vertical half-leading shift!
 
   const contentHeight = isNew
     ? (lineCount * lineHeightPx + textInsetY * 2)
-    : (initialHeight ? Math.max(initialHeight, 14) : Math.max(fontSizePx * 1.15, 14));
+    : (initialHeight || Math.round(fontSizePx * 1.15));
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Pixel-perfect precision nudging using Ctrl/Alt + Arrow keys
+    if ((e.ctrlKey || e.altKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      let nextLeft = finalPosRef.current.left;
+      let nextTop = finalPosRef.current.top;
+      if (e.key === 'ArrowUp') nextTop = Math.max(0, nextTop - step);
+      if (e.key === 'ArrowDown') nextTop = Math.max(0, nextTop + step);
+      if (e.key === 'ArrowLeft') nextLeft = Math.max(0, nextLeft - step);
+      if (e.key === 'ArrowRight') nextLeft = Math.min(pageWidthPx - 50, nextLeft + step);
+      finalPosRef.current = { left: nextLeft, top: nextTop };
+      if (wrapperRef.current) {
+        wrapperRef.current.style.left = `${nextLeft}px`;
+        wrapperRef.current.style.top = `${nextTop}px`;
+      }
+      setCoords({ x: Math.round(nextLeft / scale), y: Math.round(nextTop / scale) });
+      onRelocate?.(nextLeft, nextTop);
+      return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!isCommittedRef.current) {
@@ -321,23 +379,42 @@ export const InlineTextEditor: React.FC<InlineTextEditorProps> = ({
       onClick={(e) => {
         e.stopPropagation();
         if (e.target !== inputRef.current) {
-          inputRef.current?.focus();
+          try {
+            inputRef.current?.focus({ preventScroll: true });
+          } catch {
+            inputRef.current?.focus();
+          }
         }
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
       }}
     >
-      {/* Sleek Floating Drag Header for Add Text mode */}
+      {/* Side Move Grab Handle for Effortless Dragging */}
+      {isNew && (
+        <div
+          className="canvas-inline-side-grab"
+          onPointerDown={handleDragStart}
+          title="Drag to reposition text (Ctrl+Arrows to nudge)"
+        >
+          <Move size={11} />
+        </div>
+      )}
+
+      {/* Sleek Floating Drag Header for Add Text mode with live coordinates */}
       {isNew && (
         <div
           className="canvas-inline-drag-header"
           onPointerDown={handleDragStart}
-          title="Drag to reposition text"
+          title="Drag to reposition text (Ctrl+Arrows to nudge)"
         >
-          <Move size={11} className="canvas-inline-drag-icon" />
+          <Move size={12} className="canvas-inline-drag-icon" />
           <span className="canvas-inline-drag-label">Drag to move</span>
-          <div style={{ width: 6 }} />
+          <span className="canvas-inline-coord-badge">
+            {coords.x}, {coords.y}
+          </span>
+          <span className="canvas-inline-nudge-hint">Ctrl+Arrows</span>
+          <div style={{ width: 4 }} />
           <button
             type="button"
             className="canvas-inline-header-btn btn-commit-done"

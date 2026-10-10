@@ -9,11 +9,11 @@ if root_dir not in sys.path:
 import uvicorn
 
 if __name__ == "__main__":
-    raw_port = os.environ.get("PORT", "10000")
+    raw_port = os.environ.get("PORT", "8000")
     try:
         port = int(raw_port)
     except (ValueError, TypeError):
-        port = 10000
+        port = 8000
 
     print(f"Starting PDFModifier API on 0.0.0.0:{port}...")
     uvicorn.run("backend.app.main:app", host="0.0.0.0", port=port, log_level="info")

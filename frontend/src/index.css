@@ -1151,7 +1151,8 @@ body {
 }
 
 .textLayer span::selection {
-  background: rgba(47,111,235,0.35);
+  background: #2563eb !important;
+  color: #ffffff !important;
 }
 
 /* ==========================================================================
@@ -2160,7 +2161,8 @@ body {
 }
 
 .inline-wysiwyg-input::selection {
-  background: rgba(37,99,235,0.2) !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
 }
 
 /* ==========================================================================
@@ -2183,12 +2185,7 @@ body {
   overflow: visible !important;
   user-select: none;
   flex-shrink: 0;
-  animation: subbarSlideIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes subbarSlideIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  animation: none;
 }
 
 .editor-subbar-left {
@@ -7018,8 +7015,7 @@ html.theme-transitioning .find-replace-card {
 /* Page-Bounded Direct WYSIWYG Canvas Input (Strictly clamped inside PDF bounds) */
 .canvas-inline-text-wrapper {
   position: absolute;
-  display: inline-flex;
-  align-items: baseline;
+  display: block;
   z-index: 65;
   pointer-events: auto;
   box-sizing: border-box;
@@ -7053,29 +7049,73 @@ html.theme-transitioning .find-replace-card {
 /* Professional Add Text Floating Drag Header & Actions */
 .canvas-inline-drag-header {
   position: absolute;
-  top: -30px;
+  top: -34px;
   left: 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 8px;
-  background: #1e293b;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: #0f172a;
   color: #f8fafc;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 500;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
   user-select: none;
   cursor: grab;
-  z-index: 70;
+  z-index: 75;
   white-space: nowrap;
-  animation: fadeInDown 0.12s ease-out;
 }
 
 .canvas-inline-drag-header:active {
   cursor: grabbing;
-  background: #0f172a;
+  background: #020617;
+}
+
+.canvas-inline-drag-header .canvas-inline-coord-badge {
+  font-family: monospace;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #cbd5e1;
+}
+
+.canvas-inline-drag-header .canvas-inline-nudge-hint {
+  font-size: 9.5px;
+  color: #94a3b8;
+  margin-left: 2px;
+}
+
+.canvas-inline-side-grab {
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  color: #94a3b8;
+  border-radius: 4px;
+  cursor: grab;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 70;
+  transition: all 0.12s ease;
+}
+
+.canvas-inline-side-grab:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.canvas-inline-side-grab:active {
+  cursor: grabbing;
+  background: #1d4ed8;
 }
 
 .canvas-inline-drag-icon {
@@ -7137,10 +7177,9 @@ html.theme-transitioning .find-replace-card {
   border: none !important;
   outline: none !important;
   background: transparent !important;
-  padding: 0 3px !important;
+  padding: 0 !important;
   margin: 0 !important;
   box-shadow: none !important;
-  line-height: normal !important;
   caret-color: var(--accent) !important;
   touch-action: manipulation;
   -webkit-user-select: text !important;
@@ -7155,12 +7194,12 @@ html.theme-transitioning .find-replace-card {
 }
 
 .canvas-inline-wysiwyg-input::selection {
-  background: rgba(37, 99, 235, 0.35) !important;
-  color: #1e3a8a !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
 }
 
 [data-theme="dark"] .canvas-inline-wysiwyg-input::selection {
-  background: rgba(59, 130, 246, 0.45) !important;
+  background: #3b82f6 !important;
   color: #ffffff !important;
 }
 
@@ -7174,7 +7213,7 @@ html.theme-transitioning .find-replace-card {
   user-select: none;
   pointer-events: none;
   box-shadow: none !important;
-  background-color: #ffffff !important;
+  background-color: #ffffff;
 }
 
 /* Interactive Text Run Overlay Hover & Active States */
@@ -7202,7 +7241,7 @@ html.theme-transitioning .find-replace-card {
   background-image: radial-gradient(circle, var(--border-med) 1px, transparent 1px) !important;
   background-size: 24px 24px !important;
   background-position: 0 0 !important;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 /* State-of-the-Art Realistic Page Elevation */
@@ -7258,4 +7297,215 @@ html.theme-transitioning .find-replace-card {
     transform: scale(1.35);
     opacity: 0.6;
   }
+}
+
+/* ==========================================================================
+   Professional Canva/Figma-Style Movable Add Text Box
+   ========================================================================== */
+.pro-add-text-box-container {
+  position: absolute;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.pro-add-text-box-container.is-dragging {
+  cursor: grabbing !important;
+  opacity: 0.95;
+  filter: drop-shadow(0 8px 24px rgba(37, 99, 235, 0.25));
+}
+
+.pro-add-text-header {
+  position: absolute;
+  top: -36px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+  z-index: 85;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pro-add-text-header:active {
+  cursor: grabbing;
+  background: #020617;
+}
+
+.pro-add-text-drag-grip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+}
+
+.pro-add-text-header:hover .pro-add-text-drag-grip {
+  color: #e2e8f0;
+}
+
+.drag-grip-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.pro-add-text-coord-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.pro-add-text-nudge-hint {
+  font-size: 9.5px;
+  color: #64748b;
+}
+
+.pro-add-text-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.pro-add-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.pro-add-text-btn.btn-place {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.pro-add-text-btn.btn-place:hover {
+  background: #22c55e;
+  transform: translateY(-1px);
+}
+
+.pro-add-text-btn.btn-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 0 6px;
+}
+
+.pro-add-text-btn.btn-cancel:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.pro-add-text-side-handle {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  cursor: grab;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 82;
+  transition: all 0.12s ease;
+}
+
+.pro-add-text-side-handle:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.pro-add-text-side-handle:active {
+  cursor: grabbing;
+}
+
+.pro-add-text-frame {
+  background: transparent !important;
+  border: 1.5px dashed #2563eb !important;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15) !important;
+  transition: border-color 0.15s ease;
+}
+
+.pro-add-text-input {
+  caret-color: #2563eb;
+  touch-action: manipulation;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
+}
+
+.pro-add-text-input::placeholder {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.pro-add-text-input::selection {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.pro-box-corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 82;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.corner-nw { top: -4px; left: -4px; }
+.corner-ne { top: -4px; right: -4px; }
+.corner-se { bottom: -4px; right: -4px; }
+.corner-sw { bottom: -4px; left: -4px; }
+
+.pro-add-text-width-resizer {
+  position: absolute;
+  right: -5px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 84;
+}
+
+.pro-add-text-width-resizer:hover::after {
+  content: '';
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 4px;
+  width: 2px;
+  background: #2563eb;
+  border-radius: 1px;
 }

@@ -548,7 +548,7 @@ class PDFService:
 
             # Support multi-line insertion with exact line height
             lines = text.split("\n")
-            line_height = font_size * 1.3
+            line_height = font_size * 1.25
             for i, line_text in enumerate(lines):
                 line_baseline = y + (font_size * 0.85) + (i * line_height)
                 page.insert_text(

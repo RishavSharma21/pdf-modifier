@@ -1054,6 +1054,7 @@ export function App() {
         width: Math.max(text.trim().length * fontSize * 0.58, 28),
         height: fontSize * 1.25,
       },
+      origin: [x, y + fontSize * 0.85],
       font: {
         family: fontFamily || 'Helvetica',
         size: fontSize,

@@ -5,6 +5,7 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EditableText, ImageObject, PageMeta } from '../types/pdf';
 import { TextFormattingSubbar } from './TextFormattingSubbar';
 import { InlineTextEditor } from './InlineTextEditor';
+import { AddTextBox } from './AddTextBox';
 import { ImageEditorSubbar } from './ImageEditorSubbar';
 import { ImageCropModal } from './ImageCropModal';
 import { Image as ImageIcon, Type } from 'lucide-react';
@@ -108,6 +109,7 @@ export interface OptimisticTextPatch {
     style?: string;
   };
   underlined?: boolean;
+  origin?: [number, number];
   baseDoc: any;
   createdAt: number;
 }
@@ -696,6 +698,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
                 fontFamily={activeFontFamily || obj.font?.family || 'Helvetica'}
                 isBold={activeFontWeight === 'bold'}
                 isUnderlined={Boolean(isUnderlined)}
+                origin={obj.origin}
                 leftPx={bboxLeft}
                 topPx={bboxTop}
                 pageWidthPx={pageWidthPx}
@@ -722,6 +725,12 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         const isOptimistic = Boolean((obj as any)._isOptimistic);
         const typo = getFontTypography(obj.font || {});
 
+        const optFontSizePx = (obj.font?.size || 12) * scale;
+        const optBaselineOffset = (obj as any).origin
+          ? (((obj as any).origin[1] * scale) - bboxTop)
+          : (bboxHeight * 0.80);
+        const optPaddingTop = Math.max(0, Math.round((optBaselineOffset - (optFontSizePx * 0.78)) * 10) / 10);
+
         return (
           <React.Fragment key={obj.id}>
             {isOptimistic && (
@@ -733,17 +742,18 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
                   top: `${bboxTop}px`,
                   minWidth: `${bboxWidth}px`,
                   height: `${bboxHeight}px`,
-                  lineHeight: `${bboxHeight}px`,
+                  lineHeight: `${optFontSizePx}px`,
+                  paddingTop: `${optPaddingTop}px`,
+                  paddingLeft: '1px',
                   backgroundColor: '#ffffff',
                   zIndex: 24,
                   pointerEvents: 'none',
                   display: 'block',
-                  padding: 0,
                   margin: 0,
                   boxSizing: 'border-box',
                   overflow: 'visible',
                   whiteSpace: 'pre',
-                  fontSize: `${(obj.font?.size || 12) * scale}px`,
+                  fontSize: `${optFontSizePx}px`,
                   fontFamily: typo.family,
                   fontWeight: typo.fontWeight,
                   fontStyle: typo.fontStyle,
@@ -763,7 +773,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
                 left: `${bboxLeft}px`,
                 top: `${bboxTop}px`,
                 width: `${Math.max(bboxWidth, 24)}px`,
-                height: `${Math.max(bboxHeight, 16)}px`,
+                height: `${bboxHeight}px`,
                 zIndex: 25,
                 pointerEvents: 'auto',
               }}
@@ -822,11 +832,18 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
             : '#000000';
           const lines = patch.text.split('\n');
           const lineCount = Math.max(lines.length, 1);
-          const computedLineHeight = lineCount > 1 ? `${height / lineCount}px` : `${height}px`;
           const estCharWidth = fontSizePx * 0.58;
           const longestLineLen = Math.max(...lines.map((l) => l.length), 0);
           const estTextWidth = longestLineLen * estCharWidth;
           const coverWidth = Math.max(width, estTextWidth);
+
+          const baselineOffset = patch.origin
+            ? ((patch.origin[1] - patch.bbox.y) * scale)
+            : (lineCount > 1 ? (height / lineCount * 0.80) : (height * 0.80));
+          const patchPaddingTop = lineCount > 1
+            ? 0
+            : Math.max(0, Math.round((baselineOffset - (fontSizePx * 0.78)) * 10) / 10);
+          const computedLineHeight = lineCount > 1 ? `${height / lineCount}px` : `${fontSizePx}px`;
 
           return (
             <div
@@ -839,11 +856,14 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
                 minWidth: `${coverWidth}px`,
                 height: `${height}px`,
                 lineHeight: computedLineHeight,
-                backgroundColor: '#ffffff',
+                paddingTop: `${patchPaddingTop}px`,
+                paddingLeft: '1px',
+                paddingRight: '1px',
+                paddingBottom: 0,
+                backgroundColor: patch.id.startsWith('insert_') ? 'transparent' : '#ffffff',
                 zIndex: 26,
                 pointerEvents: 'none',
                 display: 'block',
-                padding: 0,
                 margin: 0,
                 boxSizing: 'border-box',
                 overflow: 'visible',
@@ -862,37 +882,27 @@ const PdfPageItem: React.FC<PdfPageItemProps> = ({
         })}
 
       {/* Active New Text Insertion Box on Canvas */}
+      {/* Professional Movable Add Text Box on Canvas (Canva / Figma Style) */}
       {pendingInsert && pendingInsert.pageNum === pageNum && (
-        <InlineTextEditor
-          initialText={pendingInsert.text}
-          font={{
-            family: pendingInsert.fontFamily,
-            size: pendingInsert.fontSize,
-            weight: pendingInsert.fontWeight,
-            style: 'normal',
-            color: [0, 0, 0],
-            embedded: false,
-            subsetted: false,
-            isCid: false,
-          }}
+        <AddTextBox
+          initialText={pendingInsert.text || ''}
+          x={pendingInsert.x}
+          y={pendingInsert.y}
+          pageNum={pageNum}
           scale={scale}
-          color={pendingInsert.color}
           fontSize={pendingInsert.fontSize}
           fontFamily={pendingInsert.fontFamily}
-          isBold={pendingInsert.fontWeight === 'bold'}
+          fontWeight={pendingInsert.fontWeight}
           isUnderlined={Boolean(pendingInsert.isUnderlined)}
-          leftPx={pendingInsert.x * scale}
-          topPx={pendingInsert.y * scale}
-          pageWidthPx={(pageMeta?.width || 595.28) * scale}
-          initialWidth={110}
-          initialHeight={Math.round(pendingInsert.fontSize * scale * 1.35)}
+          color={pendingInsert.color}
+          pageWidth={pageMeta?.width || 595.28}
+          pageHeight={pageMeta?.height || 841.89}
           onLiveChange={onLiveTextChange}
           onCommit={(txt) => onCommitPendingText?.(txt)}
           onCancel={() => onCancelPendingText?.()}
-          onRelocate={(newLeftPx, newTopPx) => {
-            onRelocatePendingText?.(newLeftPx / scale, newTopPx / scale);
+          onRelocate={(newX, newY) => {
+            onRelocatePendingText?.(newX, newY);
           }}
-          isNew={true}
         />
       )}
     </div>
@@ -1101,15 +1111,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       setActiveObj(null);
     }
     if (pendingInsert) {
-      const currentText = (currentEditingTextRef.current || pendingInsert.text || '').trim();
-      if (currentText) {
-        handleCommitPendingText(currentText);
-      } else {
-        // Relocate box to newly clicked location without cancelling or exiting add text mode
-        setPendingInsert((prev) => (prev ? { ...prev, x, y, pageNum } : null));
-        currentEditingTextRef.current = '';
-        return;
-      }
+      const currentText = currentEditingTextRef.current !== undefined ? currentEditingTextRef.current : pendingInsert.text;
+      // Relocate box to newly clicked location preserving whatever the user typed!
+      setPendingInsert((prev) => (prev ? { ...prev, x, y, pageNum, text: currentText } : null));
+      return;
     }
     setSelectedImage(null);
     setAdjustmentState(null);
@@ -1179,11 +1184,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       return;
     }
     const { x, y, pageNum, fontSize, fontWeight, fontFamily, color, isUnderlined: insertUnderlined } = pendingInsert;
-    // Align inserted PDF text with exact text rendered inside the Add Text input box
-    const textInsetX = 6;
-    const textInsetY = 4;
-    const actualX = Math.round(((x * scale + textInsetX) / scale) * 10) / 10;
-    const actualY = Math.round(((y * scale + textInsetY) / scale) * 10) / 10;
+    // Direct exact coordinate mapping: text sticks precisely where typed on screen
+    const actualX = Math.round(x * 10) / 10;
+    const actualY = Math.round(y * 10) / 10;
     setPendingInsert(null);
     currentEditingTextRef.current = '';
     onActiveEditChange?.(false);
@@ -1222,6 +1225,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           width: Math.max(longestLine * fontSize * 0.58, 20),
           height: lines.length * fontSize * 1.35,
         },
+        origin: [actualX, actualY + fontSize * 0.85],
         font: patchFont,
         underlined: Boolean(insertUnderlined),
         baseDoc: pdfDoc,
@@ -1428,6 +1432,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         pageNum,
         text: newText,
         bbox: { ...bbox },
+        origin: origin ? [origin[0], origin[1]] : undefined,
         font: patchFont,
         underlined: Boolean(isUnderlined),
         baseDoc: pdfDoc,

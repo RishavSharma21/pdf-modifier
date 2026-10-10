@@ -357,10 +357,34 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         baseline_y = operation.origin[1]
                         insertion_x = operation.origin[0]
                     else:
-                        baseline_y = target_rect.y0 + (def_font_size * 0.82)
+                        # Inspect matching span in target_rect for exact font baseline
+                        exact_origin_y = None
+                        try:
+                            td = page_fitz.get_text("dict")
+                            for b in td.get("blocks", []):
+                                if b.get("type") == 0:
+                                    for l in b.get("lines", []):
+                                        for s in l.get("spans", []):
+                                            sb = fitz.Rect(s["bbox"])
+                                            if target_rect.intersects(sb):
+                                                exact_origin_y = s["origin"][1]
+                                                break
+                                        if exact_origin_y is not None:
+                                            break
+                                if exact_origin_y is not None:
+                                    break
+                        except Exception:
+                            pass
+                        if exact_origin_y is not None:
+                            baseline_y = exact_origin_y
+                        else:
+                            baseline_y = target_rect.y0 + (def_font_size * 1.075)
                         insertion_x = target_rect.x0
 
                     # Scan for adjacent lines in the same visual column to avoid vertical ascender/descender overlap
+                    line_threshold = max(def_font_size * 0.60, 5.0)
+                    sibling_fill_line = None
+
                     all_page_lines = []
                     for b in page_fitz.get_text("dict").get("blocks", []):
                         if b.get("type") == 0:
@@ -369,20 +393,28 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                                 if spans:
                                     l_bbox = fitz.Rect(l.get("bbox", spans[0]["bbox"]))
                                     l_origin_y = spans[0]["origin"][1]
-                                    if (l_bbox.x0 < target_rect.x1) and (l_bbox.x1 > target_rect.x0):
-                                        all_page_lines.append((l_bbox, l_origin_y, spans[0].get("size", def_font_size)))
+                                    l_text = "".join(s.get("text", "") for s in spans).strip()
+                                    if (l_bbox.x0 < target_rect.x1 + 5.0) and (l_bbox.x1 > target_rect.x0 - 5.0):
+                                        all_page_lines.append((l_bbox, l_origin_y, spans[0].get("size", def_font_size), l_text))
 
                     b_above = None
                     sz_above = def_font_size
                     b_below = None
                     sz_below = def_font_size
 
-                    for l_bbox, l_origin_y, l_size in all_page_lines:
-                        if l_origin_y < baseline_y - 2.0:
+                    for l_bbox, l_origin_y, l_size, l_text in all_page_lines:
+                        y_diff = l_origin_y - baseline_y
+                        if abs(y_diff) <= line_threshold:
+                            # Sibling on the same visual baseline/row
+                            if l_text != orig_text and ('__' in l_text or bool(re.match(r'^(signature|name|date|title|by):\s*', l_text, re.IGNORECASE))):
+                                sibling_fill_line = (l_bbox, l_origin_y, l_size, l_text)
+                        elif y_diff < -line_threshold:
+                            # Line strictly above
                             if b_above is None or l_origin_y > b_above:
                                 b_above = l_origin_y
                                 sz_above = l_size
-                        elif l_origin_y > baseline_y + 2.0:
+                        elif y_diff > line_threshold:
+                            # Line strictly below
                             if b_below is None or l_origin_y < b_below:
                                 b_below = l_origin_y
                                 sz_below = l_size
@@ -412,6 +444,12 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             clamped_rects_to_redact.append(fitz.Rect(r.x0, c_y0, r.x1, c_y1))
                     if not clamped_rects_to_redact:
                         clamped_rects_to_redact = [fitz.Rect(target_rect.x0 - 0.5, safe_y0, target_rect.x1 + 0.5, safe_y1)]
+
+                    # If this text sits on a sibling fill line with underscores, redact the underscore span
+                    # from target_rect.x0 onwards so it doesn't leave partial clipped underscores
+                    if sibling_fill_line and '__' in sibling_fill_line[3]:
+                        sib_bbox = sibling_fill_line[0]
+                        clamped_rects_to_redact.append(fitz.Rect(target_rect.x0 - 0.5, sib_bbox.y0 - 0.2, sib_bbox.x1 + 0.5, sib_bbox.y1 + 0.2))
 
                     # 2. Detect underlying background color behind target_rect (e.g. table cell grey, banner tint, or white)
                     bg_color = (1.0, 1.0, 1.0)
@@ -497,8 +535,10 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                     
                     # Detect sibling text on the same line to avoid overlapping adjacent columns/tables
                     sibling_right_x0 = None
-                    for l_bbox, l_origin_y, _ in all_page_lines:
-                        if abs(l_origin_y - baseline_y) <= 3.0:
+                    for l_bbox, l_origin_y, _, _ in all_page_lines:
+                        if abs(l_origin_y - baseline_y) <= line_threshold:
+                            if sibling_fill_line and l_bbox == sibling_fill_line[0]:
+                                continue
                             if l_bbox.x0 > target_rect.x1 - 2.0:
                                 if sibling_right_x0 is None or l_bbox.x0 < sibling_right_x0:
                                     sibling_right_x0 = l_bbox.x0
@@ -761,19 +801,25 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                     is_known_form_prefix = bool(re.match(r'^(signature|name|date|title|by):\s*', orig_text, re.IGNORECASE))
                     has_form_line = False
                     form_line_x1 = target_rect.x1
+                    form_line_y = None
                     for d in all_drawings:
                         dr = fitz.Rect(d.get("rect"))
                         if dr and dr.height <= 3.5:
                             if abs(dr.y0 - baseline_y) <= 4.0 or abs(dr.y1 - baseline_y) <= 4.0:
                                 if dr.x0 < target_rect.x1 + 10.0 and dr.x1 > target_rect.x0:
                                     has_form_line = True
+                                    form_line_y = (dr.y0 + dr.y1) / 2.0
                                     if dr.x1 > form_line_x1:
                                         form_line_x1 = dr.x1
 
-                    is_fill_line = has_underscores or (is_known_form_prefix and has_form_line) or (getattr(operation, 'underlined', False) and is_known_form_prefix)
+                    is_fill_line = has_underscores or (sibling_fill_line is not None) or has_form_line or (is_known_form_prefix and has_form_line) or (getattr(operation, 'underlined', False) and is_known_form_prefix)
                     
                     fill_line_start_x = insertion_x
                     fill_line_end_x = max(target_rect.x1, form_line_x1)
+                    if sibling_fill_line is not None:
+                        fill_line_start_x = target_rect.x0
+                        fill_line_end_x = max(fill_line_end_x, sibling_fill_line[0].x1)
+
                     clean_render_text = sub_new
 
                     if is_fill_line:
@@ -798,10 +844,10 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                         clean_render_text = re.sub(r'[ \t]+', ' ', clean_render_text).strip()
                         
                         # If the user only typed the fill value without the prefix (e.g. "Hello"),
-                        # preserve the label prefix (e.g. "Signature: Hello").
-                        if prefix_str and not clean_render_text.startswith(prefix_str.strip()):
+                        # preserve the label prefix ONLY if orig_text itself started with that prefix.
+                        if prefix_str and orig_text.lstrip().lower().startswith(prefix_str.strip().lower()) and not clean_render_text.startswith(prefix_str.strip()):
                             clean_render_text = f"{prefix_str}{clean_render_text}"
-                        elif not clean_render_text and prefix_str:
+                        elif not clean_render_text and prefix_str and orig_text.lstrip().lower().startswith(prefix_str.strip().lower()):
                             clean_render_text = prefix_str.rstrip()
 
                     # 1. Segment modified text preserving original multi-span formatting (bold, italic, colors)
@@ -941,6 +987,16 @@ class TrueContentModificationStrategy(TextModificationStrategy):
                             u_color = text_underline_info["color"]
                             u_width = text_underline_info["width"]
                             u_dashes = text_underline_info.get("dashes")
+                        elif form_line_y is not None:
+                            uy = form_line_y
+                            u_color = (0.2, 0.2, 0.2)
+                            u_width = 0.75
+                            u_dashes = None
+                        elif sibling_fill_line is not None:
+                            uy = sibling_fill_line[1]
+                            u_color = (0.2, 0.2, 0.2)
+                            u_width = 0.75
+                            u_dashes = None
                         else:
                             uy = baseline_y + 1.2
                             u_color = font_color

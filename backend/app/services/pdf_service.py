@@ -160,6 +160,11 @@ class PDFService:
 
     def get_session_file_path(self, session_id: str) -> str:
         """Get the current working PDF path for a session."""
+        try:
+            session_id = str(uuid.UUID(session_id))
+        except (AttributeError, TypeError, ValueError):
+            raise FileNotFoundError(f"Session '{session_id}' not found.") from None
+
         path = os.path.join(self.storage_dir, session_id, "current.pdf")
         if not os.path.exists(path):
             raise FileNotFoundError(f"Session '{session_id}' not found.")

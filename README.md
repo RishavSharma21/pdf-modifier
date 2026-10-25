@@ -1,19 +1,43 @@
 # PDF Modifier
 
-Need to edit a PDF without ruining its formatting? Here it is.
+PDF Modifier edits PDF content while aiming to preserve the document's existing layout, fonts, and vector graphics.
 
-Most PDF editors either slap a white box over existing text or convert the whole document to Word and back, breaking your fonts, alignments, and vector graphics. 
+## Features
 
-**PDF Modifier** does true in-place surgical editing directly inside the PDF stream. Your original fonts, kerning, tables, and layouts stay completely intact.
+- Edit existing text and retain its typography where supported by the PDF.
+- Browse multi-page documents in a continuous view.
+- Find and replace text across a document.
+- Insert, move, resize, or remove text and images.
+- Rotate, delete, and redact pages or page regions.
+- Undo and redo edits during the active backend process.
 
----
+PDFs vary in how they encode text, fonts, and graphics, so results can differ by document. Keep an original copy and review exported files before relying on them.
 
-### What it does:
+## Run Locally
 
-- **Edit text directly**: Click any text and edit it in-place. Original typography and styling are preserved.
-- **Continuous multi-page view**: Smooth, continuous document scrolling (just like Google Drive).
-- **Find & Replace**: Search keywords across the entire document and replace them in one go.
-- **Images & Logos**: Select, swap, or remove images embedded in the document.
-- **Insert new text**: Add custom text runs anywhere with font, size, and color controls.
-- **Full History**: Unlimited Undo / Redo for every change.
-- **Private & Local**: Files are processed on your own machine—no external cloud dependencies.
+Requirements: Python 3.11 or newer, Node.js, and npm.
+
+Start the API from the repository root:
+
+```sh
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python run.py
+```
+
+In a second terminal, start the web app:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Open the local URL printed by Vite. Run backend tests from the repository root with `python -m pytest` and build the frontend with `cd frontend && npm run build`.
+
+## Privacy and Deployment
+
+When running locally, uploaded PDFs are processed by the backend on your machine and stored under `experiments/sessions`. When using a hosted deployment, files are sent to and processed by that deployment's server; do not upload sensitive documents unless you trust its operator and have reviewed its retention and access policies. Session files and undo history are not a substitute for durable backup, and undo/redo state is held in backend memory.
+
+Uploads are limited to 50 MiB. Session identifiers are validated before they are used to access stored files.

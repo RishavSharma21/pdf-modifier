@@ -7,6 +7,7 @@ from ..services.pdf_service import PDFService
 
 router = APIRouter(prefix="/api/pdf", tags=["PDF Operations"])
 service = PDFService()
+MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 
 
 class AnalyzeRequest(BaseModel):
@@ -77,10 +78,12 @@ class RedactRequest(BaseModel):
 @router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     """Upload a PDF file and initialize a working session."""
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="PDF uploads must be 50 MiB or smaller.")
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
@@ -256,9 +259,13 @@ async def adjust_or_replace_image(
         image_bytes = None
         if file:
             try:
-                image_bytes = await file.read()
+                image_bytes = await file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+                if len(image_bytes) > MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(status_code=413, detail="Uploads must be 50 MiB or smaller.")
                 if len(image_bytes) == 0:
                     image_bytes = None
+            except HTTPException:
+                raise
             except Exception:
                 image_bytes = None
 
